@@ -1,16 +1,17 @@
 import AccountSelector from '@/components/layout/AccountSelector'
 
-interface User {
+interface Account {
   id: number
-  username: string
+  user_id: number
+  name: string
+  account_type: string
   initial_capital: number
   current_cash: number
   frozen_cash: number
-  has_password: boolean
 }
 
 interface PortfolioProps {
-  user: User
+  user: Account
   onUserChange?: (username: string) => void
 }
 
@@ -24,8 +25,11 @@ export default function Portfolio({
       {onUserChange && (
         <div className="flex justify-end">
           <AccountSelector
-            currentUser={user}
-            onUserChange={onUserChange}
+            currentAccount={user}
+            onAccountChange={(accountId) => {
+              console.log('Switch to account ID:', accountId)
+              // Implement account switching if needed
+            }}
           />
         </div>
       )}

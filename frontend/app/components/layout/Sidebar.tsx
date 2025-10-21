@@ -43,18 +43,6 @@ export default function Sidebar({ currentPage = 'comprehensive', onPageChange }:
           </button>
 
           <button
-            className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
-              currentPage === 'asset-curve'
-                ? 'bg-secondary/80 text-secondary-foreground'
-                : 'hover:bg-muted text-muted-foreground'
-            }`}
-            onClick={() => onPageChange?.('asset-curve')}
-            title="Asset Curve"
-          >
-            <TrendingUp className="w-5 h-5" />
-          </button>
-
-          <button
             className="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
             onClick={() => setSettingsOpen(true)}
             title="Settings"

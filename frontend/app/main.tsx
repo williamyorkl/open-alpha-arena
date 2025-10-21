@@ -25,34 +25,44 @@ import Sidebar from '@/components/layout/Sidebar'
 import TradingPanel from '@/components/trading/TradingPanel'
 import Portfolio from '@/components/portfolio/Portfolio'
 import AssetCurve from '@/components/portfolio/AssetCurve'
-import AssetTab from '@/components/portfolio/AssetTab'
 import ComprehensiveView from '@/components/portfolio/ComprehensiveView'
 
 interface User {
   id: number
   username: string
+}
+
+interface Account {
+  id: number
+  user_id: number
+  name: string
+  account_type: string
   initial_capital: number
   current_cash: number
   frozen_cash: number
 }
 
 interface Overview {
-  user: User
+  account: Account
   total_assets: number
   positions_value: number
+  portfolio?: {
+    total_assets: number
+    positions_value: number
+  }
 }
-interface Position { id: number; user_id: number; symbol: string; name: string; market: string; quantity: number; available_quantity: number; avg_cost: number; last_price?: number | null; market_value?: number | null }
+interface Position { id: number; account_id: number; symbol: string; name: string; market: string; quantity: number; available_quantity: number; avg_cost: number; last_price?: number | null; market_value?: number | null }
 interface Order { id: number; order_no: string; symbol: string; name: string; market: string; side: string; order_type: string; price?: number; quantity: number; filled_quantity: number; status: string }
-interface Trade { id: number; order_id: number; user_id: number; symbol: string; name: string; market: string; side: string; price: number; quantity: number; commission: number; trade_time: string }
+interface Trade { id: number; order_id: number; account_id: number; symbol: string; name: string; market: string; side: string; price: number; quantity: number; commission: number; trade_time: string }
 
 const PAGE_TITLES: Record<string, string> = {
   portfolio: 'Simulated Crypto Trading',
-  'asset-curve': 'Asset Curve Overview',
   comprehensive: 'Open Alpha Arena',
 }
 
 function App() {
-  const [userId, setUserId] = useState<number | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [account, setAccount] = useState<Account | null>(null)
   const [overview, setOverview] = useState<Overview | null>(null)
   const [positions, setPositions] = useState<Position[]>([])
   const [orders, setOrders] = useState<Order[]>([])
@@ -71,13 +81,18 @@ function App() {
     wsRef.current = ws!
 
     const handleOpen = () => {
-      // Start with demo_gpt as default account
-      ws!.send(JSON.stringify({ type: 'bootstrap', username: 'demo_gpt', initial_capital: 10000 }))
+      // Start with demo as default account
+      ws!.send(JSON.stringify({ type: 'bootstrap', username: 'demo', initial_capital: 10000 }))
     }
     const handleMessage = (e: MessageEvent) => {
       const msg = JSON.parse(e.data)
       if (msg.type === 'bootstrap_ok') {
-        setUserId(msg.user.id)
+        if (msg.user) {
+          setUser(msg.user)
+        }
+        if (msg.account) {
+          setAccount(msg.account)
+        }
         // request initial snapshot
         ws!.send(JSON.stringify({ type: 'get_snapshot' }))
       } else if (msg.type === 'snapshot') {
@@ -150,7 +165,7 @@ function App() {
     }
   }
 
-  if (!userId || !overview) return <div className="p-8">Connecting to trading server...</div>
+  if (!user || !account || !overview) return <div className="p-8">Connecting to trading server...</div>
 
   const renderMainContent = () => {
     switch (currentPage) {
@@ -182,14 +197,15 @@ function App() {
         return (
           <main className="flex-1 p-6 overflow-hidden">
             <Portfolio
-              user={overview.user}
+              user={overview.account}
               onUserChange={switchUser}
             />
             <div className="flex gap-6 h-[calc(100vh-400px)] mt-4">
               <div className="flex-shrink-0">
                 <TradingPanel
                   onPlace={placeOrder}
-                  user={overview.user}
+                  user={user}
+                  account={account}
                   positions={positions.map(p => ({ symbol: p.symbol, market: p.market, available_quantity: p.available_quantity }))}
                   lastPrices={Object.fromEntries(positions.map(p => [`${p.symbol}.${p.market}`, p.last_price ?? null]))}
                 />
@@ -206,11 +222,9 @@ function App() {
 
                   <div className="flex-1 overflow-hidden">
                     <TabsContent value="asset" className="h-full overflow-y-auto">
-                      <AssetTab
-                        user={overview.user}
-                        totalAssets={overview.total_assets}
-                        positionsValue={overview.positions_value}
-                      />
+                      <div className="p-4 text-muted-foreground text-sm">
+                        Asset details shown in the comprehensive view below
+                      </div>
                     </TabsContent>
 
                     <TabsContent value="positions" className="h-full overflow-y-auto">
@@ -244,7 +258,8 @@ function App() {
       <div className="flex-1 flex flex-col">
         <Header
           title={pageTitle}
-          currentUser={overview?.user}
+          currentUser={user}
+          currentAccount={account}
           showAccountSelector={currentPage === 'portfolio' || currentPage === 'comprehensive'}
           onUserChange={switchUser}
         />

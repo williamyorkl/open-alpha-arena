@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 import logging
 
-from database.models import Order, Position, Trade, User, CRYPTO_MIN_COMMISSION, CRYPTO_COMMISSION_RATE, CRYPTO_MIN_ORDER_QUANTITY, CRYPTO_LOT_SIZE
+from database.models import Order, Position, Trade, Account, User, CRYPTO_MIN_COMMISSION, CRYPTO_COMMISSION_RATE, CRYPTO_MIN_ORDER_QUANTITY, CRYPTO_LOT_SIZE
 from .market_data import get_last_price
 
 logger = logging.getLogger(__name__)
@@ -22,14 +22,14 @@ def _calc_commission(notional: Decimal) -> Decimal:
     return max(pct_fee, min_fee)
 
 
-def create_order(db: Session, user: User, symbol: str, name: str, market: str, 
+def create_order(db: Session, account: Account, symbol: str, name: str, market: str, 
                 side: str, order_type: str, price: Optional[float], quantity: int) -> Order:
     """
     Create limit order
 
     Args:
         db: Database session
-        user: User object
+        account: Account object
         symbol: Stock Symbol
         name: Stock name
         market: Market Symbol
@@ -78,14 +78,14 @@ def create_order(db: Session, user: User, symbol: str, name: str, market: str,
         commission = _calc_commission(notional)
         cash_needed = notional + commission
 
-        if Decimal(str(user.current_cash)) < cash_needed:
-            raise ValueError(f"Insufficient cash. Need ${cash_needed:.2f}, current cash ${user.current_cash:.2f}")
+        if Decimal(str(account.current_cash)) < cash_needed:
+            raise ValueError(f"Insufficient cash. Need ${cash_needed:.2f}, current cash ${account.current_cash:.2f}")
 
     else:  # SELL
         # Sell: check if sufficient positions available
         position = (
             db.query(Position)
-            .filter(Position.user_id == user.id, Position.symbol == symbol, Position.market == market)
+            .filter(Position.account_id == account.id, Position.symbol == symbol, Position.market == market)
             .first()
         )
 
@@ -96,7 +96,7 @@ def create_order(db: Session, user: User, symbol: str, name: str, market: str,
     # Create order
     order = Order(
         version="v1",
-        user_id=user.id,
+        account_id=account.id,
         order_no=uuid.uuid4().hex[:16],
         symbol=symbol,
         name=name,
@@ -142,9 +142,9 @@ def check_and_execute_order(db: Session, order: Order) -> bool:
         current_price_decimal = Decimal(str(current_price))
 
         # Get user information
-        user = db.query(User).filter(User.id == order.user_id).first()
-        if not user:
-            logger.error(f"User corresponding to order {order.order_no} does not exist")
+        account = db.query(Account).filter(Account.id == order.account_id).first()
+        if not account:
+            logger.error(f"Account corresponding to order {order.order_no} does not exist")
             return False
 
         # Check execution conditions
@@ -177,30 +177,30 @@ def check_and_execute_order(db: Session, order: Order) -> bool:
             return False
 
         # Execute order
-        return _execute_order(db, order, user, execution_price)
+        return _execute_order(db, order, account, execution_price)
 
     except Exception as e:
         logger.error(f"Error checking order {order.order_no}: {e}")
         return False
 
 
-def _release_frozen_on_fill(user: User, order: Order, execution_price: Decimal, commission: Decimal):
+def _release_frozen_on_fill(account: Account, order: Order, execution_price: Decimal, commission: Decimal):
     """Release frozen cash on fill (for BUY only)"""
     if order.side == "BUY":
         # Estimated frozen amount may differ from actual execution, release based on actual execution amount
         notional = execution_price * Decimal(order.quantity)
         frozen_to_release = notional + commission
-        user.frozen_cash = float(max(Decimal(str(user.frozen_cash)) - frozen_to_release, Decimal('0')))
+        account.frozen_cash = float(max(Decimal(str(account.frozen_cash)) - frozen_to_release, Decimal('0')))
 
 
-def _execute_order(db: Session, order: Order, user: User, execution_price: Decimal) -> bool:
+def _execute_order(db: Session, order: Order, account: Account, execution_price: Decimal) -> bool:
     """
     Execute order fill
 
     Args:
         db: Database session
         order: Order object
-        user: User object
+        account: Account object
         execution_price: Execution price
 
     Returns:
@@ -219,19 +219,19 @@ def _execute_order(db: Session, order: Order, user: User, execution_price: Decim
                 return False
                 
             # Deduct cash
-            user.current_cash = float(Decimal(str(user.current_cash)) - cash_needed)
+            account.current_cash = float(Decimal(str(account.current_cash)) - cash_needed)
             
             # Update position
             position = (
                 db.query(Position)
-                .filter(Position.user_id == user.id, Position.symbol == order.symbol, Position.market == order.market)
+                .filter(Position.account_id == account.id, Position.symbol == order.symbol, Position.market == order.market)
                 .first()
             )
             
             if not position:
                 position = Position(
                     version="v1",
-                    user_id=user.id,
+                    account_id=account.id,
                     symbol=order.symbol,
                     name=order.name,
                     market=order.market,
@@ -260,7 +260,7 @@ def _execute_order(db: Session, order: Order, user: User, execution_price: Decim
             # Check position
             position = (
                 db.query(Position)
-                .filter(Position.user_id == user.id, Position.symbol == order.symbol, Position.market == order.market)
+                .filter(Position.account_id == account.id, Position.symbol == order.symbol, Position.market == order.market)
                 .first()
             )
 
@@ -274,12 +274,12 @@ def _execute_order(db: Session, order: Order, user: User, execution_price: Decim
             
             # Add cash
             cash_gain = notional - commission
-            user.current_cash = float(Decimal(str(user.current_cash)) + cash_gain)
+            account.current_cash = float(Decimal(str(account.current_cash)) + cash_gain)
         
         # Create trade record
         trade = Trade(
             order_id=order.id,
-            user_id=user.id,
+            account_id=account.id,
             symbol=order.symbol,
             name=order.name,
             market=order.market,
@@ -291,7 +291,7 @@ def _execute_order(db: Session, order: Order, user: User, execution_price: Decim
         db.add(trade)
 
         # Release frozen (BUY)
-        _release_frozen_on_fill(user, order, execution_price, commission)
+        _release_frozen_on_fill(account, order, execution_price, commission)
         
         # Update order status
         order.filled_quantity = quantity
@@ -308,26 +308,26 @@ def _execute_order(db: Session, order: Order, user: User, execution_price: Decim
         return False
 
 
-def get_pending_orders(db: Session, user_id: Optional[int] = None) -> list[Order]:
+def get_pending_orders(db: Session, account_id: Optional[int] = None) -> list[Order]:
     """
     Get pending orders
 
     Args:
         db: Database session
-        user_id: User ID, when None get all users' pending orders
+        account_id: Account ID, when None get all accounts' pending orders
 
     Returns:
         List of pending orders
     """
     query = db.query(Order).filter(Order.status == "PENDING")
     
-    if user_id is not None:
-        query = query.filter(Order.user_id == user_id)
+    if account_id is not None:
+        query = query.filter(Order.account_id == account_id)
     
     return query.order_by(Order.created_at).all()
 
 
-def _release_frozen_on_cancel(user: User, order: Order):
+def _release_frozen_on_cancel(account: Account, order: Order):
     """Release frozen on order cancel (BUY only)"""
     if order.side == "BUY":
         # Conservative release: estimate frozen amount based on order price, avoid getting market price
@@ -340,7 +340,7 @@ def _release_frozen_on_cancel(user: User, order: Order):
         notional = Decimal(str(ref_price)) * Decimal(order.quantity)
         commission = _calc_commission(notional)
         release_amt = notional + commission
-        user.frozen_cash = float(max(Decimal(str(user.frozen_cash)) - release_amt, Decimal('0')))
+        account.frozen_cash = float(max(Decimal(str(account.frozen_cash)) - release_amt, Decimal('0')))
 
 
 def cancel_order(db: Session, order: Order, reason: str = "User cancelled") -> bool:
@@ -361,9 +361,9 @@ def cancel_order(db: Session, order: Order, reason: str = "User cancelled") -> b
     try:
         order.status = "CANCELLED"
         # Release frozen
-        user = db.query(User).filter(User.id == order.user_id).first()
-        if user:
-            _release_frozen_on_cancel(user, order)
+        account = db.query(Account).filter(Account.id == order.account_id).first()
+        if account:
+            _release_frozen_on_cancel(account, order)
         db.commit()
         
         logger.info(f"Order {order.order_no} cancelled: {reason}")

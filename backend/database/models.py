@@ -7,19 +7,42 @@ from .connection import Base
 
 
 class User(Base):
-    """Unified AI Trader Account - combines trading account with AI model config"""
+    """User for authentication and account management"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False)
+    email = Column(String(100), unique=True, nullable=True)
+    password_hash = Column(String(255), nullable=True)  # For future password authentication
+    is_active = Column(String(10), nullable=False, default="true")
+    
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    updated_at = Column(
+        TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+    # Relationships
+    accounts = relationship("Account", back_populates="user")
+    auth_sessions = relationship("UserAuthSession", back_populates="user")
+
+
+class Account(Base):
+    """Trading Account with AI model configuration"""
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     version = Column(String(100), nullable=False, default="v1")
     
     # Account Identity
-    username = Column(String(50), unique=True, nullable=False)  # Display name (e.g., "GPT", "Claude")
+    name = Column(String(100), nullable=False)  # Display name (e.g., "GPT Trader", "Claude Analyst")
+    account_type = Column(String(20), nullable=False, default="AI")  # "AI" or "MANUAL"
+    is_active = Column(String(10), nullable=False, default="true")
     
-    # AI Model Configuration
-    model = Column(String(100), nullable=False, default="gpt-4")  # AI model name
-    base_url = Column(String(500), nullable=False, default="https://api.openai.com/v1")  # API endpoint
-    api_key = Column(String(500), nullable=False)  # API key for authentication
+    # AI Model Configuration (for AI accounts)
+    model = Column(String(100), nullable=True, default="gpt-4")  # AI model name
+    base_url = Column(String(500), nullable=True, default="https://api.openai.com/v1")  # API endpoint
+    api_key = Column(String(500), nullable=True)  # API key for authentication
     
     # Trading Account Balances (USD for CRYPTO market)
     initial_capital = Column(DECIMAL(18, 2), nullable=False, default=10000.00)
@@ -31,9 +54,10 @@ class User(Base):
         TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
 
-    positions = relationship("Position", back_populates="user")
-    orders = relationship("Order", back_populates="user")
-    auth_sessions = relationship("UserAuthSession", back_populates="user")
+    # Relationships
+    user = relationship("User", back_populates="accounts")
+    positions = relationship("Position", back_populates="account")
+    orders = relationship("Order", back_populates="account")
 
 
 class UserAuthSession(Base):
@@ -57,7 +81,7 @@ class Position(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     version = Column(String(100), nullable=False, default="v1")
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
     symbol = Column(String(20), nullable=False)
     name = Column(String(100), nullable=False)
     market = Column(String(10), nullable=False)
@@ -69,7 +93,7 @@ class Position(Base):
         TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
 
-    user = relationship("User", back_populates="positions")
+    account = relationship("Account", back_populates="positions")
 
 
 class Order(Base):
@@ -77,7 +101,7 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     version = Column(String(100), nullable=False, default="v1")
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
     order_no = Column(String(32), unique=True, nullable=False)
     symbol = Column(String(20), nullable=False)  # e.g., 'BTC/USD'
     name = Column(String(100), nullable=False)   # e.g., 'Bitcoin'
@@ -93,7 +117,7 @@ class Order(Base):
         TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
 
-    user = relationship("User", back_populates="orders")
+    account = relationship("Account", back_populates="orders")
     trades = relationship("Trade", back_populates="order")
 
 
@@ -102,7 +126,7 @@ class Trade(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
     symbol = Column(String(20), nullable=False)  # e.g., 'BTC/USD'
     name = Column(String(100), nullable=False)   # e.g., 'Bitcoin'
     market = Column(String(10), nullable=False, default="CRYPTO")

@@ -1,5 +1,5 @@
 """
-系统配置 API 路由
+System config API routes
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -32,13 +32,12 @@ class ConfigUpdateRequest(BaseModel):
 
 @router.get("/check-required")
 async def check_required_configs(db: Session = Depends(get_db)):
-    """检查必需的配置是否已设置"""
+    """Check if required configs are set"""
     try:
-        # 目前没有必需的配置
         return {
             "has_required_configs": True,
             "missing_configs": []
         }
     except Exception as e:
-        logger.error(f"检查必需配置失败: {e}")
-        raise HTTPException(status_code=500, detail=f"检查配置失败: {str(e)}")
+        logger.error(f"Failed to check required configs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check required configs: {str(e)}")

@@ -67,64 +67,145 @@ export async function getPopularCryptos() {
   return response.json()
 }
 
-// AI Trader Account management functions
-export interface AITraderAccount {
+// User authentication interfaces
+export interface User {
   id: number
-  username: string  // Display name (e.g., "GPT", "Claude")
-  model: string  // AI model (e.g., "gpt-4-turbo")
-  base_url: string  // API endpoint
-  api_key: string  // API key (masked in responses)
+  username: string
+  email?: string
+  is_active: boolean
+}
+
+export interface UserCreate {
+  username: string
+  email?: string
+  password?: string
+}
+
+export interface UserAuthResponse {
+  user: User
+  session_token: string
+  expires_at: string
+}
+
+// Trading Account management functions
+export interface TradingAccount {
+  id: number
+  user_id: number
+  name: string  // Display name (e.g., "GPT Trader", "Claude Analyst")
+  model?: string  // AI model (e.g., "gpt-4-turbo")
+  base_url?: string  // API endpoint
+  api_key?: string  // API key (masked in responses)
   initial_capital: number
   current_cash: number
   frozen_cash: number
+  account_type: string  // "AI" or "MANUAL"
+  is_active: boolean
 }
 
-export interface AITraderAccountCreate {
-  username: string
-  model: string
-  base_url: string
-  api_key: string
+export interface TradingAccountCreate {
+  name: string
+  model?: string
+  base_url?: string
+  api_key?: string
   initial_capital?: number
+  account_type?: string
 }
 
-export interface AITraderAccountUpdate {
-  username?: string
+export interface TradingAccountUpdate {
+  name?: string
   model?: string
   base_url?: string
   api_key?: string
 }
 
-export async function listAITraderAccounts(): Promise<AITraderAccount[]> {
-  const response = await apiRequest('/account/users')
+// User authentication functions
+export async function registerUser(userData: UserCreate): Promise<User> {
+  const response = await apiRequest('/users/register', {
+    method: 'POST',
+    body: JSON.stringify(userData),
+  })
   return response.json()
 }
 
-export async function createAITraderAccount(account: AITraderAccountCreate): Promise<AITraderAccount> {
-  const response = await apiRequest('/account/users', {
+export async function loginUser(username: string, password: string): Promise<UserAuthResponse> {
+  const response = await apiRequest('/users/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+  return response.json()
+}
+
+export async function getUserProfile(sessionToken: string): Promise<User> {
+  const response = await apiRequest(`/users/profile?session_token=${sessionToken}`)
+  return response.json()
+}
+
+// Trading Account management functions (matching backend query parameter style)
+export async function listTradingAccounts(sessionToken: string): Promise<TradingAccount[]> {
+  const response = await apiRequest(`/accounts/?session_token=${sessionToken}`)
+  return response.json()
+}
+
+export async function createTradingAccount(account: TradingAccountCreate, sessionToken: string): Promise<TradingAccount> {
+  const response = await apiRequest(`/accounts/?session_token=${sessionToken}`, {
     method: 'POST',
     body: JSON.stringify(account),
   })
   return response.json()
 }
 
-export async function updateAITraderAccount(accountId: number, account: AITraderAccountUpdate): Promise<AITraderAccount> {
-  const response = await apiRequest(`/account/users/${accountId}`, {
+export async function updateTradingAccount(accountId: number, account: TradingAccountUpdate, sessionToken: string): Promise<TradingAccount> {
+  const response = await apiRequest(`/accounts/${accountId}?session_token=${sessionToken}`, {
     method: 'PUT',
     body: JSON.stringify(account),
   })
   return response.json()
 }
 
-export async function deleteAITraderAccount(accountId: number): Promise<void> {
-  await apiRequest(`/account/users/${accountId}`, {
+export async function deleteTradingAccount(accountId: number, sessionToken: string): Promise<void> {
+  await apiRequest(`/accounts/${accountId}?session_token=${sessionToken}`, {
     method: 'DELETE',
   })
 }
 
+// Demo mode functions (no authentication required)
+export async function initDemoUser(username: string = "demo"): Promise<{user: User, account: TradingAccount}> {
+  const response = await apiRequest(`/demo/init?username=${username}`)
+  return response.json()
+}
+
+export async function getDemoAccounts(username: string = "demo"): Promise<TradingAccount[]> {
+  const response = await apiRequest(`/demo/accounts?username=${username}`)
+  return response.json()
+}
+
+export async function getDemoOverview(username: string = "demo"): Promise<any> {
+  const response = await apiRequest(`/demo/overview?username=${username}`)
+  return response.json()
+}
+
+export async function resetDemoAccount(username: string = "demo"): Promise<any> {
+  const response = await apiRequest(`/demo/reset?username=${username}`, {
+    method: 'POST'
+  })
+  return response.json()
+}
+
 // Legacy aliases for backward compatibility
-export type AIAccount = AITraderAccount
-export type AIAccountCreate = AITraderAccountCreate
-export const listAIAccounts = listAITraderAccounts
-export const createAIAccount = createAITraderAccount
-export const updateAIAccount = updateAITraderAccount
-export const deleteAIAccount = deleteAITraderAccount
+export type AIAccount = TradingAccount
+export type AIAccountCreate = TradingAccountCreate
+
+// Updated legacy functions to use demo mode for simulation
+export const listAIAccounts = () => getDemoAccounts("demo")
+export const createAIAccount = (account: any) => {
+  console.warn("createAIAccount is deprecated. Use demo mode or new trading account APIs.")
+  return Promise.resolve({} as TradingAccount)
+}
+export const updateAIAccount = (id: number, account: any) => {
+  console.warn("updateAIAccount is deprecated. Use demo mode or new trading account APIs.")
+  return Promise.resolve({} as TradingAccount)
+}
+export const deleteAIAccount = (id: number) => {
+  console.warn("deleteAIAccount is deprecated. Use demo mode or new trading account APIs.")
+  return Promise.resolve()
+}

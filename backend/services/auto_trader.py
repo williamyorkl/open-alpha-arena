@@ -8,7 +8,7 @@ import requests
 from sqlalchemy.orm import Session
 
 from database.connection import SessionLocal
-from database.models import Position, User
+from database.models import Position, User, Account
 from services.asset_calculator import calc_positions_value
 from services.market_data import get_last_price
 from services.order_matching import create_order, check_and_execute_order
@@ -16,6 +16,13 @@ from services.order_matching import create_order, check_and_execute_order
 
 logger = logging.getLogger(__name__)
 
+# Demo mode API keys that should be skipped
+DEMO_API_KEYS = {
+    "demo-key-please-update-in-settings",
+    "demo",
+    "",
+    None
+}
 
 SUPPORTED_SYMBOLS: Dict[str, str] = {
     "BTC": "Bitcoin",
@@ -29,10 +36,15 @@ SUPPORTED_SYMBOLS: Dict[str, str] = {
 AI_TRADING_SYMBOLS: List[str] = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"]
 
 
-def _get_portfolio_data(db: Session, user: User) -> Dict:
+def _is_demo_api_key(api_key: str) -> bool:
+    """Check if the API key is a demo/placeholder key that should be skipped"""
+    return api_key in DEMO_API_KEYS
+
+
+def _get_portfolio_data(db: Session, account: Account) -> Dict:
     """Get current portfolio positions and values"""
     positions = db.query(Position).filter(
-        Position.user_id == user.id,
+        Position.account_id == account.id,
         Position.market == "CRYPTO"
     ).all()
     
@@ -46,10 +58,10 @@ def _get_portfolio_data(db: Session, user: User) -> Dict:
             }
     
     return {
-        "cash": float(user.current_cash),
-        "frozen_cash": float(user.frozen_cash),
+        "cash": float(account.current_cash),
+        "frozen_cash": float(account.frozen_cash),
         "positions": portfolio,
-        "total_assets": float(user.current_cash) + calc_positions_value(db, user.id)
+        "total_assets": float(account.current_cash) + calc_positions_value(db, account.id)
     }
 
 
@@ -66,8 +78,13 @@ def _get_market_prices(symbols: List[str]) -> Dict[str, float]:
     return prices
 
 
-def _call_ai_for_decision(user: User, portfolio: Dict, prices: Dict[str, float]) -> Optional[Dict]:
+def _call_ai_for_decision(account: Account, portfolio: Dict, prices: Dict[str, float]) -> Optional[Dict]:
     """Call AI model API to get trading decision"""
+    # Check if this is a demo API key
+    if _is_demo_api_key(account.api_key):
+        logger.info(f"Skipping AI trading for account {account.name} - using demo API key")
+        return None
+    
     try:
         prompt = f"""You are a cryptocurrency trading AI. Based on the following portfolio and market data, decide on a trading action.
 
@@ -98,17 +115,17 @@ Rules:
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {user.api_key}"
+            "Authorization": f"Bearer {account.api_key}"
         }
         
         payload = {
-            "model": user.model,
+            "model": account.model,
             "input": prompt,
             "response_format": "text"
         }
         
         response = requests.post(
-            f"{user.base_url}/responses",
+            f"{account.base_url}/responses",
             headers=headers,
             json=payload,
             timeout=30
@@ -135,7 +152,7 @@ Rules:
                     text_content = text_content.split("```")[1].split("```")[0].strip()
                 
                 decision = json.loads(text_content)
-                logger.info(f"AI decision for {user.username}: {decision}")
+                logger.info(f"AI decision for {account.name}: {decision}")
                 return decision
         
         logger.error(f"Unexpected AI response format: {result}")
@@ -152,14 +169,27 @@ Rules:
         return None
 
 
-def _choose_user(db: Session) -> Optional[User]:
-    users = db.query(User).all()
-    if not users:
+def _choose_account(db: Session) -> Optional[Account]:
+    """Choose a random active AI account that is not using demo API key"""
+    accounts = db.query(Account).filter(
+        Account.is_active == "true",
+        Account.account_type == "AI"
+    ).all()
+    
+    if not accounts:
         return None
-    return random.choice(users)
+    
+    # Filter out demo accounts
+    valid_accounts = [acc for acc in accounts if not _is_demo_api_key(acc.api_key)]
+    
+    if not valid_accounts:
+        logger.debug("No valid AI accounts found (all using demo keys)")
+        return None
+        
+    return random.choice(valid_accounts)
 
 
-def _select_side(db: Session, user: User, symbol: str, max_value: float) -> Optional[Tuple[str, int]]:
+def _select_side(db: Session, account: Account, symbol: str, max_value: float) -> Optional[Tuple[str, int]]:
     market = "CRYPTO"
     try:
         price = float(get_last_price(symbol, market))
@@ -174,14 +204,14 @@ def _select_side(db: Session, user: User, symbol: str, max_value: float) -> Opti
     max_quantity_by_value = int(Decimal(str(max_value)) // Decimal(str(price)))
     position = (
         db.query(Position)
-        .filter(Position.user_id == user.id, Position.symbol == symbol, Position.market == market)
+        .filter(Position.account_id == account.id, Position.symbol == symbol, Position.market == market)
         .first()
     )
     available_quantity = int(position.available_quantity) if position else 0
 
     choices = []
 
-    if float(user.current_cash) >= price and max_quantity_by_value >= 1:
+    if float(account.current_cash) >= price and max_quantity_by_value >= 1:
         choices.append(("BUY", max_quantity_by_value))
 
     if available_quantity > 0:
@@ -201,16 +231,16 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
     """Place crypto order based on AI model decision"""
     db = SessionLocal()
     try:
-        user = _choose_user(db)
-        if not user:
-            logger.debug("No available users, skipping AI trading")
+        account = _choose_account(db)
+        if not account:
+            logger.debug("No available accounts, skipping AI trading")
             return
 
         # Get portfolio data
-        portfolio = _get_portfolio_data(db, user)
+        portfolio = _get_portfolio_data(db, account)
         
         if portfolio['total_assets'] <= 0:
-            logger.debug(f"User {user.username} has non-positive total assets, skipping")
+            logger.debug(f"Account {account.name} has non-positive total assets, skipping")
             return
 
         # Get latest market prices
@@ -220,9 +250,9 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
             return
 
         # Call AI for trading decision
-        decision = _call_ai_for_decision(user, portfolio, prices)
+        decision = _call_ai_for_decision(account, portfolio, prices)
         if not decision:
-            logger.warning(f"Failed to get AI decision for {user.username}, skipping")
+            logger.warning(f"Failed to get AI decision for {account.name}, skipping")
             return
 
         operation = decision.get("operation", "").lower()
@@ -230,7 +260,7 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
         target_portion = float(decision.get("target_portion_of_balance", 0))
         reason = decision.get("reason", "No reason provided")
 
-        logger.info(f"AI decision for {user.username}: {operation} {symbol} (portion: {target_portion:.2%}) - {reason}")
+        logger.info(f"AI decision for {account.name}: {operation} {symbol} (portion: {target_portion:.2%}) - {reason}")
 
         # Validate decision
         if operation not in ["buy", "sell", "hold"]:
@@ -238,7 +268,7 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
             return
         
         if operation == "hold":
-            logger.info(f"AI decided to HOLD for {user.username}")
+            logger.info(f"AI decided to HOLD for {account.name}")
             return
 
         if symbol not in SUPPORTED_SYMBOLS:
@@ -258,7 +288,7 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
         # Calculate quantity based on operation
         if operation == "buy":
             # Calculate quantity based on available cash and target portion
-            available_cash = float(user.current_cash)
+            available_cash = float(account.current_cash)
             order_value = available_cash * target_portion
             quantity = int(Decimal(str(order_value)) // Decimal(str(price)))
             
@@ -272,7 +302,7 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
             # Calculate quantity based on position and target portion
             position = (
                 db.query(Position)
-                .filter(Position.user_id == user.id, Position.symbol == symbol, Position.market == "CRYPTO")
+                .filter(Position.account_id == account.id, Position.symbol == symbol, Position.market == "CRYPTO")
                 .first()
             )
             
@@ -296,7 +326,7 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
         
         order = create_order(
             db=db,
-            user=user,
+            account=account,
             symbol=symbol,
             name=name,
             market="CRYPTO",
@@ -313,12 +343,12 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
         if executed:
             db.refresh(order)
             logger.info(
-                f"AI order executed: user={user.username} {side} {symbol} {order.order_no} "
+                f"AI order executed: account={account.name} {side} {symbol} {order.order_no} "
                 f"quantity={quantity} reason='{reason}'"
             )
         else:
             logger.info(
-                f"AI order created: user={user.username} {side} {symbol} "
+                f"AI order created: account={account.name} {side} {symbol} "
                 f"quantity={quantity} order_id={order.order_no} reason='{reason}'"
             )
 
@@ -333,27 +363,27 @@ def place_random_crypto_order(max_ratio: float = 0.2) -> None:
     """Legacy random order placement (kept for backward compatibility)"""
     db = SessionLocal()
     try:
-        user = _choose_user(db)
-        if not user:
-            logger.debug("No available users, skipping auto order placement")
+        account = _choose_account(db)
+        if not account:
+            logger.debug("No available accounts, skipping auto order placement")
             return
 
-        positions_value = calc_positions_value(db, user.id)
-        total_assets = positions_value + float(user.current_cash)
+        positions_value = calc_positions_value(db, account.id)
+        total_assets = positions_value + float(account.current_cash)
 
         if total_assets <= 0:
-            logger.debug("User %s total assets non-positive, skipping auto order placement", user.username)
+            logger.debug("Account %s total assets non-positive, skipping auto order placement", account.name)
             return
 
         max_order_value = total_assets * max_ratio
         if max_order_value <= 0:
-            logger.debug("User %s maximum order amount is 0, skipping", user.username)
+            logger.debug("Account %s maximum order amount is 0, skipping", account.name)
             return
 
         symbol = random.choice(list(SUPPORTED_SYMBOLS.keys()))
-        side_info = _select_side(db, user, symbol, max_order_value)
+        side_info = _select_side(db, account, symbol, max_order_value)
         if not side_info:
-            logger.debug("User %s has no executable direction for %s, skipping", user.username, symbol)
+            logger.debug("Account %s has no executable direction for %s, skipping", account.name, symbol)
             return
 
         side, quantity = side_info
@@ -361,7 +391,7 @@ def place_random_crypto_order(max_ratio: float = 0.2) -> None:
 
         order = create_order(
             db=db,
-            user=user,
+            account=account,
             symbol=symbol,
             name=name,
             market="CRYPTO",
@@ -377,9 +407,9 @@ def place_random_crypto_order(max_ratio: float = 0.2) -> None:
         executed = check_and_execute_order(db, order)
         if executed:
             db.refresh(order)
-            logger.info("Auto order executed: user=%s %s %s %s quantity=%s", user.username, side, symbol, order.order_no, quantity)
+            logger.info("Auto order executed: account=%s %s %s %s quantity=%s", account.name, side, symbol, order.order_no, quantity)
         else:
-            logger.info("Auto order created: user=%s %s %s quantity=%s order_id=%s", user.username, side, symbol, quantity, order.order_no)
+            logger.info("Auto order created: account=%s %s %s quantity=%s order_id=%s", account.name, side, symbol, quantity, order.order_no)
 
     except Exception as err:
         logger.error("Auto order placement failed: %s", err)

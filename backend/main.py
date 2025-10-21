@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import os
 
 from database.connection import engine, Base, SessionLocal
-from database.models import TradingConfig, User, SystemConfig
+from database.models import TradingConfig, User, Account, SystemConfig
 from config.settings import DEFAULT_TRADING_CONFIGS
 app = FastAPI(title="Simulated Crypto Trading API")
 
@@ -53,16 +53,65 @@ def on_startup():
                     )
                 )
             db.commit()
-        # Ensure a demo user exists
-        if db.query(User).count() == 0:
-            demo = User(
-                version="v1",
+        # Ensure only demo user and its account exist
+        # Delete all non-demo users and their accounts
+        from database.models import Position, Order, Trade
+        
+        non_demo_users = db.query(User).filter(User.username != "demo").all()
+        for user in non_demo_users:
+            # Get user's account IDs
+            account_ids = [acc.id for acc in db.query(Account).filter(Account.user_id == user.id).all()]
+            
+            if account_ids:
+                # Delete trades, orders, positions associated with these accounts
+                db.query(Trade).filter(Trade.account_id.in_(account_ids)).delete(synchronize_session=False)
+                db.query(Order).filter(Order.account_id.in_(account_ids)).delete(synchronize_session=False)
+                db.query(Position).filter(Position.account_id.in_(account_ids)).delete(synchronize_session=False)
+                
+                # Now delete the accounts
+                db.query(Account).filter(Account.user_id == user.id).delete(synchronize_session=False)
+            
+            # Delete the user
+            db.delete(user)
+        
+        db.commit()
+        
+        # Ensure demo user exists
+        demo_user = db.query(User).filter(User.username == "demo").first()
+        if not demo_user:
+            demo_user = User(
                 username="demo",
-                initial_capital=1000.0,  # $1000 starting capital for crypto trading
-                current_cash=1000.0,
-                frozen_cash=0.0,
+                email=None,
+                password_hash=None,
+                is_active="true"
             )
-            db.add(demo)
+            db.add(demo_user)
+            db.commit()
+            db.refresh(demo_user)
+        
+        # Ensure demo user has exactly one account
+        demo_accounts = db.query(Account).filter(Account.user_id == demo_user.id).all()
+        if len(demo_accounts) == 0:
+            # Create default account
+            demo_account = Account(
+                user_id=demo_user.id,
+                version="v1",
+                name="GPT",
+                account_type="AI",
+                model="gpt-5-mini",
+                base_url="https://api.openai.com/v1",
+                api_key="demo-key-please-update-in-settings",
+                initial_capital=10000.0,  # $10,000 starting capital for crypto trading
+                current_cash=10000.0,
+                frozen_cash=0.0,
+                is_active="true"
+            )
+            db.add(demo_account)
+            db.commit()
+        elif len(demo_accounts) > 1:
+            # Keep only the first account, delete others
+            for account in demo_accounts[1:]:
+                db.delete(account)
             db.commit()
     finally:
         db.close()
@@ -83,6 +132,7 @@ def on_shutdown():
 from api.market_data_routes import router as market_data_router
 from api.order_routes import router as order_router
 from api.account_routes import router as account_router
+from api.demo_routes import router as demo_router
 from api.config_routes import router as config_router
 from api.ranking_routes import router as ranking_router
 from api.crypto_routes import router as crypto_router
@@ -91,6 +141,7 @@ from api.crypto_routes import router as crypto_router
 app.include_router(market_data_router)
 app.include_router(order_router)
 app.include_router(account_router)
+app.include_router(demo_router)
 app.include_router(config_router)
 app.include_router(ranking_router)
 app.include_router(crypto_router)

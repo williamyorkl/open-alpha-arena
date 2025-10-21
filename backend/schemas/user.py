@@ -3,41 +3,37 @@ from typing import Optional
 
 
 class UserCreate(BaseModel):
-    """Create a new AI Trader Account"""
+    """Create a new user for authentication"""
     username: str
-    model: str = "gpt-4-turbo"
-    base_url: str = "https://api.openai.com/v1"
-    api_key: str
-    initial_capital: float = 10000.0
+    email: Optional[str] = None
+    password: Optional[str] = None  # For future authentication if needed
 
 
 class UserUpdate(BaseModel):
-    """Update AI Trader Account"""
+    """Update user information"""
     username: Optional[str] = None
-    model: Optional[str] = None
-    base_url: Optional[str] = None
-    api_key: Optional[str] = None
+    email: Optional[str] = None
 
 
 class UserOut(BaseModel):
-    """AI Trader Account output"""
+    """User output for authentication"""
     id: int
     username: str
-    model: str
-    base_url: str
-    api_key: str  # Will be masked in API responses
-    initial_capital: float
-    current_cash: float
-    frozen_cash: float
+    email: Optional[str] = None
+    is_active: bool
 
     class Config:
         from_attributes = True
 
 
-# Removed password-based auth - now using API keys
+class UserLogin(BaseModel):
+    """User login credentials"""
+    username: str
+    password: str
 
 
-class AccountOverview(BaseModel):
+class UserAuthResponse(BaseModel):
+    """User authentication response"""
     user: UserOut
-    total_assets: float  # Total assets in USD
-    positions_value: float  # Total positions value in USD
+    session_token: str
+    expires_at: str

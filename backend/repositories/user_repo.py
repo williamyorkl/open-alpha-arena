@@ -1,37 +1,23 @@
 from sqlalchemy.orm import Session
 from typing import Optional
 from database.models import User, UserAuthSession
-from decimal import Decimal
 import hashlib
 import secrets
 import datetime
 
 
-def get_or_create_user(
-    db: Session, 
-    username: str, 
-    initial_capital: float = 100000.0,
-    model: str = "gpt-4-turbo",
-    base_url: str = "https://api.openai.com/v1",
-    api_key: str = "demo-key-please-update-in-settings"
+def create_user(
+    db: Session,
+    username: str,
+    email: str = None,
+    password: str = None
 ) -> User:
-    """Get or create user (AI Trader Account)
-    
-    Note: For WebSocket bootstrap, provides default AI config.
-    Users should update API keys through Settings dialog.
-    """
-    user = db.query(User).filter(User.username == username).first()
-    if user:
-        return user
+    """Create a new user"""
     user = User(
-        version="v1",
         username=username,
-        model=model,
-        base_url=base_url,
-        api_key=api_key,
-        initial_capital=initial_capital,
-        current_cash=initial_capital,
-        frozen_cash=0.0,
+        email=email,
+        password_hash=_hash_password(password) if password else None,
+        is_active="true"
     )
     db.add(user)
     db.commit()
@@ -39,24 +25,54 @@ def get_or_create_user(
     return user
 
 
+def get_or_create_user(
+    db: Session, 
+    username: str = "demo",
+    email: str = None,
+    password: str = None
+) -> User:
+    """Get or create user for demo mode
+    
+    Note: For demo/simulation mode, creates user without authentication.
+    """
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        return user
+    
+    # Create demo user without password requirement
+    return create_user(db, username, email, password)
+
+
 def get_user(db: Session, user_id: int) -> Optional[User]:
+    """Get user by ID"""
     return db.query(User).filter(User.id == user_id).first()
 
 
-def update_user_cash(
-    db: Session, 
-    user_id: int, 
-    current_cash: float, 
-    frozen_cash: float = None
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    """Get user by username"""
+    return db.query(User).filter(User.username == username).first()
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    """Get user by email"""
+    return db.query(User).filter(User.email == email).first()
+
+
+def update_user(
+    db: Session,
+    user_id: int,
+    username: str = None,
+    email: str = None
 ) -> Optional[User]:
-    """Update user cash balance"""
+    """Update user information"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return None
     
-    user.current_cash = current_cash
-    if frozen_cash is not None:
-        user.frozen_cash = frozen_cash
+    if username is not None:
+        user.username = username
+    if email is not None:
+        user.email = email
     
     db.commit()
     db.refresh(user)

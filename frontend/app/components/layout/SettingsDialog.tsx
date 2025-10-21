@@ -10,12 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Trash2, Plus, Pencil } from 'lucide-react'
 import { 
-  listAIAccounts, 
-  createAIAccount, 
-  updateAIAccount,
-  deleteAIAccount, 
-  type AIAccount, 
-  type AIAccountCreate 
+  getDemoAccounts,
+  initDemoUser,
+  resetDemoAccount,
+  type TradingAccount,
+  type TradingAccountCreate 
 } from '@/lib/api'
 
 interface SettingsDialogProps {
@@ -44,7 +43,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const loadAccounts = async () => {
     try {
       setLoading(true)
-      const data = await listAIAccounts()
+      const data = await getDemoAccounts("demo")
       setAccounts(data)
     } catch (error) {
       console.error('Failed to load accounts:', error)

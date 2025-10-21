@@ -4,18 +4,18 @@ from database.models import Position
 from .market_data import get_last_price
 
 
-def calc_positions_value(db: Session, user_id: int) -> float:
+def calc_positions_value(db: Session, account_id: int) -> float:
     """
     计算持仓总市值
     
     Args:
         db: 数据库会话
-        user_id: 用户ID
+        account_id: 账户ID
         
     Returns:
         持仓总市值，如果无法获取价格则返回0
     """
-    positions = db.query(Position).filter(Position.user_id == user_id).all()
+    positions = db.query(Position).filter(Position.account_id == account_id).all()
     total = Decimal("0")
     
     for p in positions:

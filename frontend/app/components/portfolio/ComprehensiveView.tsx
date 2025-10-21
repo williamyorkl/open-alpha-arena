@@ -3,20 +3,20 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Button } from '@/components/ui/button'
 import { toast } from 'react-hot-toast'
 import AssetCurveWithData from './AssetCurveWithData'
-import AssetTab from './AssetTab'
 import AccountSelector from '@/components/layout/AccountSelector'
 
-interface User {
+interface Account {
   id: number
-  username: string
+  user_id: number
+  name: string
+  account_type: string
   initial_capital: number
   current_cash: number
   frozen_cash: number
-  has_password: boolean
 }
 
 interface Overview {
-  user: User
+  account: Account
   total_assets: number
   positions_value: number
 }
@@ -129,27 +129,21 @@ export default function ComprehensiveView({
         <div className="col-span-2 overflow-hidden">
           <div className="flex justify-end mb-2">
           <AccountSelector
-            currentUser={overview.user}
-            onUserChange={switchUser}
+            currentAccount={overview.account}
+            onAccountChange={(accountId) => {
+              // For now, just log - implement account switching if needed
+              console.log('Switch to account ID:', accountId)
+            }}
           />
           </div>
-          <Tabs defaultValue="asset" className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="asset">Asset</TabsTrigger>
+          <Tabs defaultValue="positions" className="h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="positions">Positions</TabsTrigger>
               <TabsTrigger value="orders">Orders</TabsTrigger>
               <TabsTrigger value="trades">Trades</TabsTrigger>
             </TabsList>
 
             <div className="flex-1 overflow-hidden">
-              <TabsContent value="asset" className="h-full overflow-y-auto">
-                <AssetTab
-                  user={overview.user}
-                  totalAssets={overview.total_assets}
-                  positionsValue={overview.positions_value}
-                />
-              </TabsContent>
-
               <TabsContent value="positions" className="h-full overflow-y-auto">
                 <PositionList positions={positions} />
               </TabsContent>

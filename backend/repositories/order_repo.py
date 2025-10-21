@@ -10,10 +10,10 @@ def create_order(db: Session, order: Order) -> Order:
     return order
 
 
-def list_orders(db: Session, user_id: int) -> List[Order]:
+def list_orders(db: Session, account_id: int) -> List[Order]:
     return (
         db.query(Order)
-        .filter(Order.user_id == user_id)
+        .filter(Order.account_id == account_id)
         .order_by(Order.created_at.desc())
         .all()
     )

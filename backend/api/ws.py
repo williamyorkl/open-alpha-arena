@@ -5,12 +5,13 @@ import json
 
 from database.connection import SessionLocal
 from repositories.user_repo import get_or_create_user, get_user
+from repositories.account_repo import get_or_create_default_account, get_account
 from repositories.order_repo import list_orders
 from repositories.position_repo import list_positions
 from services.asset_calculator import calc_positions_value
 from services.market_data import get_last_price
-from services.scheduler import add_user_snapshot_job, remove_user_snapshot_job
-from database.models import Trade, User, CryptoPrice
+from services.scheduler import add_account_snapshot_job, remove_account_snapshot_job
+from database.models import Trade, User, Account, CryptoPrice
 from sqlalchemy import func
 from datetime import datetime, timedelta, date
 import logging
@@ -23,59 +24,59 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         pass  # WebSocket is already accepted in the endpoint
 
-    def register(self, user_id: int, websocket: WebSocket):
-        self.active_connections.setdefault(user_id, set()).add(websocket)
-        # Add scheduled snapshot task for new user
-        add_user_snapshot_job(user_id, interval_seconds=10)
+    def register(self, account_id: int, websocket: WebSocket):
+        self.active_connections.setdefault(account_id, set()).add(websocket)
+        # Add scheduled snapshot task for new account
+        add_account_snapshot_job(account_id, interval_seconds=10)
 
-    def unregister(self, user_id: int, websocket: WebSocket):
-        if user_id in self.active_connections:
-            self.active_connections[user_id].discard(websocket)
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
-                # Remove the scheduled task for this user
-                remove_user_snapshot_job(user_id)
+    def unregister(self, account_id: int, websocket: WebSocket):
+        if account_id in self.active_connections:
+            self.active_connections[account_id].discard(websocket)
+            if not self.active_connections[account_id]:
+                del self.active_connections[account_id]
+                # Remove the scheduled task for this account
+                remove_account_snapshot_job(account_id)
 
-    async def send_to_user(self, user_id: int, message: dict):
-        if user_id not in self.active_connections:
+    async def send_to_account(self, account_id: int, message: dict):
+        if account_id not in self.active_connections:
             return
         payload = json.dumps(message, ensure_ascii=False)
-        for ws in list(self.active_connections[user_id]):
+        for ws in list(self.active_connections[account_id]):
             try:
                 await ws.send_text(payload)
             except Exception:
                 # remove broken connection
-                self.active_connections[user_id].discard(ws)
+                self.active_connections[account_id].discard(ws)
 
 
 manager = ConnectionManager()
 
 
 def get_all_asset_curves_data(db: Session):
-    """Get asset curve data for all users - WebSocket version"""
+    """Get asset curve data for all accounts - WebSocket version"""
     try:
-        # Get all users
-        users = db.query(User).all()
-        if not users:
+        # Get all accounts
+        accounts = db.query(Account).all()
+        if not accounts:
             return []
 
         all_curve_data = []
 
-        for user in users:
+        for account in accounts:
             try:
                 # Get first trade time
-                first_trade = db.query(Trade).filter(Trade.user_id == user.id).order_by(Trade.trade_time.asc()).first()
+                first_trade = db.query(Trade).filter(Trade.account_id == account.id).order_by(Trade.trade_time.asc()).first()
 
                 if not first_trade:
                     # If no trading records, return initial capital point
                     all_curve_data.append({
                         "date": datetime.now().date().isoformat(),
-                        "total_assets": float(user.initial_capital),
-                        "cash": float(user.current_cash),
+                        "total_assets": float(account.initial_capital),
+                        "cash": float(account.current_cash),
                         "positions_value": 0.0,
                         "is_initial": True,
-                        "user_id": user.id,
-                        "username": user.username
+                        "user_id": account.user_id,
+                        "username": account.name
                     })
                     continue
 
@@ -86,17 +87,17 @@ def get_all_asset_curves_data(db: Session):
                 # Add starting point
                 all_curve_data.append({
                     "date": start_date.isoformat(),
-                    "total_assets": float(user.initial_capital),
-                    "cash": float(user.initial_capital),
+                    "total_assets": float(account.initial_capital),
+                    "cash": float(account.initial_capital),
                     "positions_value": 0.0,
                     "is_initial": True,
-                    "user_id": user.id,
-                    "username": user.username
+                    "user_id": account.user_id,
+                    "username": account.name
                 })
 
                 # Get all trading dates (dates with trades)
                 trade_dates = db.query(func.date(Trade.trade_time).label('trade_date')).filter(
-                    Trade.user_id == user.id
+                    Trade.account_id == account.id
                 ).distinct().order_by('trade_date').all()
 
                 # Get all dates with price data
@@ -138,11 +139,11 @@ def get_all_asset_curves_data(db: Session):
                 for target_date in relevant_dates:
                     try:
                         # Calculate cash changes up to the target date
-                        cash_changes = _calculate_cash_changes_up_to_date(db, user.id, target_date)
-                        current_cash = float(user.initial_capital) + cash_changes
+                        cash_changes = _calculate_cash_changes_up_to_date(db, account.id, target_date)
+                        current_cash = float(account.initial_capital) + cash_changes
 
                         # Calculate position value on the target date
-                        positions_value = _calculate_positions_value_on_date(db, user.id, target_date)
+                        positions_value = _calculate_positions_value_on_date(db, account.id, target_date)
 
                         total_assets = current_cash + positions_value
 
@@ -152,16 +153,16 @@ def get_all_asset_curves_data(db: Session):
                             "cash": current_cash,
                             "positions_value": positions_value,
                             "is_initial": False,
-                            "user_id": user.id,
-                            "username": user.username
+                            "user_id": account.user_id,
+                            "username": account.name
                         })
 
                     except Exception as e:
-                        logging.warning(f"Failed to calculate assets for user {user.id} on date {target_date}: {e}")
+                        logging.warning(f"Failed to calculate assets for account {account.id} on date {target_date}: {e}")
                         continue
 
             except Exception as e:
-                logging.warning(f"Failed to process asset curve for user {user.id}: {e}")
+                logging.warning(f"Failed to process asset curve for account {account.id}: {e}")
                 continue
 
         return all_curve_data
@@ -171,12 +172,12 @@ def get_all_asset_curves_data(db: Session):
         return []
 
 
-def _calculate_cash_changes_up_to_date(db: Session, user_id: int, target_date: date) -> float:
+def _calculate_cash_changes_up_to_date(db: Session, account_id: int, target_date: date) -> float:
     """Calculate cash changes up to the specified date"""
     try:
         # Calculate the impact of all trades on cash up to the target date
         trades = db.query(Trade).filter(
-            Trade.user_id == user_id,
+            Trade.account_id == account_id,
             func.date(Trade.trade_time) <= target_date
         ).all()
 
@@ -195,12 +196,12 @@ def _calculate_cash_changes_up_to_date(db: Session, user_id: int, target_date: d
         return 0.0
 
 
-def _calculate_positions_value_on_date(db: Session, user_id: int, target_date: date) -> float:
+def _calculate_positions_value_on_date(db: Session, account_id: int, target_date: date) -> float:
     """Calculate position value on the specified date"""
     try:
         # 获取到该日期为止的所有交易
         trades = db.query(Trade).filter(
-            Trade.user_id == user_id,
+            Trade.account_id == account_id,
             func.date(Trade.trade_time) <= target_date
         ).order_by(Trade.trade_time).all()
 
@@ -245,26 +246,28 @@ def _calculate_positions_value_on_date(db: Session, user_id: int, target_date: d
 manager = ConnectionManager()
 
 
-async def _send_snapshot(db: Session, user_id: int):
-    user = get_user(db, user_id)
-    if not user:
+async def _send_snapshot(db: Session, account_id: int):
+    account = get_account(db, account_id)
+    if not account:
         return
-    positions = list_positions(db, user_id)
-    orders = list_orders(db, user_id)
+    positions = list_positions(db, account_id)
+    orders = list_orders(db, account_id)
     trades = (
-        db.query(Trade).filter(Trade.user_id == user_id).order_by(Trade.trade_time.desc()).limit(20).all()
+        db.query(Trade).filter(Trade.account_id == account_id).order_by(Trade.trade_time.desc()).limit(20).all()
     )
-    positions_value = calc_positions_value(db, user_id)
+    positions_value = calc_positions_value(db, account_id)
 
     overview = {
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "initial_capital": float(user.initial_capital),
-            "current_cash": float(user.current_cash),
-            "frozen_cash": float(user.frozen_cash),
+        "account": {
+            "id": account.id,
+            "user_id": account.user_id,
+            "name": account.name,
+            "account_type": account.account_type,
+            "initial_capital": float(account.initial_capital),
+            "current_cash": float(account.current_cash),
+            "frozen_cash": float(account.frozen_cash),
         },
-        "total_assets": positions_value + float(user.current_cash),
+        "total_assets": positions_value + float(account.current_cash),
         "positions_value": positions_value,
     }
     # enrich positions with latest price and market value
@@ -283,7 +286,7 @@ async def _send_snapshot(db: Session, user_id: int):
 
         enriched_positions.append({
             "id": p.id,
-            "user_id": p.user_id,
+            "account_id": p.account_id,
             "symbol": p.symbol,
             "name": p.name,
             "market": p.market,
@@ -303,7 +306,7 @@ async def _send_snapshot(db: Session, user_id: int):
             {
                 "id": o.id,
                 "order_no": o.order_no,
-                "user_id": o.user_id,
+                "user_id": o.account_id,
                 "symbol": o.symbol,
                 "name": o.name,
                 "market": o.market,
@@ -320,7 +323,7 @@ async def _send_snapshot(db: Session, user_id: int):
             {
                 "id": t.id,
                 "order_id": t.order_id,
-                "user_id": t.user_id,
+                "user_id": t.account_id,
                 "symbol": t.symbol,
                 "name": t.name,
                 "market": t.market,
@@ -342,12 +345,13 @@ async def _send_snapshot(db: Session, user_id: int):
             "message": price_error_message
         }
 
-    await manager.send_to_user(user_id, response_data)
+    await manager.send_to_account(account_id, response_data)
 
 
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    user_id: int | None = None
+    account_id: int | None = None
+    user_id: int | None = None  # Initialize user_id to avoid UnboundLocalError
 
     try:
         while True:
@@ -357,15 +361,27 @@ async def websocket_endpoint(websocket: WebSocket):
             db: Session = SessionLocal()
             try:
                 if kind == "bootstrap":
-                    user = get_or_create_user(
-                        db,
-                        msg.get("username", "demo"),
-                        float(msg.get("initial_capital", 100000))
+                    # Demo mode: Create or get default demo user
+                    username = msg.get("username", "demo")
+                    user = get_or_create_user(db, username)
+                    
+                    # Get or create default account for this user
+                    account = get_or_create_default_account(
+                        db, 
+                        user.id,
+                        account_name=f"{username} AI Trader",
+                        initial_capital=float(msg.get("initial_capital", 100000))
                     )
-                    user_id = user.id
-                    manager.register(user_id, websocket)
-                    await manager.send_to_user(user_id, {"type": "bootstrap_ok", "user": {"id": user.id, "username": user.username}})
-                    await _send_snapshot(db, user_id)
+                    account_id = account.id
+                    manager.register(account_id, websocket)
+                    
+                    # Send bootstrap confirmation with account info
+                    await manager.send_to_account(account_id, {
+                        "type": "bootstrap_ok", 
+                        "user": {"id": user.id, "username": user.username},
+                        "account": {"id": account.id, "name": account.name, "user_id": account.user_id}
+                    })
+                    await _send_snapshot(db, account_id)
                 elif kind == "subscribe":
                     # subscribe existing user_id
                     uid = int(msg.get("user_id"))

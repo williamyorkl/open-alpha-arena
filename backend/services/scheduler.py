@@ -25,7 +25,7 @@ class TaskScheduler:
     def __init__(self):
         self.scheduler: Optional[AsyncIOScheduler] = None
         self._started = False
-        self._user_connections: Dict[int, Set] = {}  # track user connections
+        self._account_connections: Dict[int, Set] = {}  # track account connections
         
     def start(self):
         """Start the scheduler"""
@@ -46,52 +46,52 @@ class TaskScheduler:
         """Check if scheduler is running"""
         return self._started and self.scheduler and self.scheduler.running
     
-    def add_user_snapshot_task(self, user_id: int, interval_seconds: int = 10):
+    def add_account_snapshot_task(self, account_id: int, interval_seconds: int = 10):
         """
-        Add snapshot update task for user
+        Add snapshot update task for account
 
         Args:
-            user_id: User ID
+            account_id: Account ID
             interval_seconds: Update interval (seconds), default 10 seconds
         """
         if not self.is_running():
             self.start()
             
-        job_id = f"snapshot_user_{user_id}"
+        job_id = f"snapshot_account_{account_id}"
         
         # Check if task already exists
         if self.scheduler.get_job(job_id):
-            logger.debug(f"Snapshot task for user {user_id} already exists")
+            logger.debug(f"Snapshot task for account {account_id} already exists")
             return
         
         self.scheduler.add_job(
-            func=self._execute_user_snapshot,
+            func=self._execute_account_snapshot,
             trigger=IntervalTrigger(seconds=interval_seconds),
-            args=[user_id],
+            args=[account_id],
             id=job_id,
             replace_existing=True,
             max_instances=1  # Avoid duplicate execution
         )
         
-        logger.info(f"Added snapshot task for user {user_id}, interval {interval_seconds} seconds")
+        logger.info(f"Added snapshot task for account {account_id}, interval {interval_seconds} seconds")
     
-    def remove_user_snapshot_task(self, user_id: int):
+    def remove_account_snapshot_task(self, account_id: int):
         """
-        Remove snapshot update task for user
+        Remove snapshot update task for account
 
         Args:
-            user_id: User ID
+            account_id: Account ID
         """
         if not self.scheduler:
             return
             
-        job_id = f"snapshot_user_{user_id}"
+        job_id = f"snapshot_account_{account_id}"
         
         try:
             self.scheduler.remove_job(job_id)
-            logger.info(f"Removed snapshot task for user {user_id}")
+            logger.info(f"Removed snapshot task for account {account_id}")
         except Exception as e:
-            logger.debug(f"Failed to remove snapshot task for user {user_id}: {e}")
+            logger.debug(f"Failed to remove snapshot task for account {account_id}: {e}")
     
     def add_market_hours_task(self, task_func: Callable, cron_expression: str, task_id: str):
         """
@@ -168,55 +168,55 @@ class TaskScheduler:
             })
         return jobs
 
-    async def _execute_user_snapshot(self, user_id: int):
+    async def _execute_account_snapshot(self, account_id: int):
         """
-        Internal method to execute user snapshot update
+        Internal method to execute account snapshot update
 
         Args:
-            user_id: User ID
+            account_id: Account ID
         """
         try:
             # Dynamic import to avoid circular dependency
             from api.ws import manager, _send_snapshot
 
-            # Check if user still has active connections
-            if user_id not in manager.active_connections:
-                # User disconnected, remove task
-                self.remove_user_snapshot_task(user_id)
+            # Check if account still has active connections
+            if account_id not in manager.active_connections:
+                # Account disconnected, remove task
+                self.remove_account_snapshot_task(account_id)
                 return
 
             # Execute snapshot update
             db: Session = SessionLocal()
             try:
                 # Send snapshot update
-                await _send_snapshot(db, user_id)
+                await _send_snapshot(db, account_id)
 
-                # Save latest prices for user's stock positions
-                await self._save_position_prices(db, user_id)
+                # Save latest prices for account's positions
+                await self._save_position_prices(db, account_id)
 
             finally:
                 db.close()
 
         except Exception as e:
-            logger.error(f"User {user_id} snapshot update failed: {e}")
+            logger.error(f"Account {account_id} snapshot update failed: {e}")
     
-    async def _save_position_prices(self, db: Session, user_id: int):
+    async def _save_position_prices(self, db: Session, account_id: int):
         """
-        Save latest prices for user's stock positions on the current date
+        Save latest prices for account's positions on the current date
 
         Args:
             db: Database session
-            user_id: User ID
+            account_id: Account ID
         """
         try:
-            # Get all user's positions
+            # Get all account's positions
             positions = db.query(Position).filter(
-                Position.user_id == user_id,
+                Position.account_id == account_id,
                 Position.quantity > 0
             ).all()
 
             if not positions:
-                logger.debug(f"User {user_id} has no positions, skip price saving")
+                logger.debug(f"Account {account_id} has no positions, skip price saving")
                 return
 
             today = date.today()
@@ -257,7 +257,7 @@ class TaskScheduler:
                     continue
 
         except Exception as e:
-            logger.error(f"Failed to save user {user_id} position prices: {e}")
+            logger.error(f"Failed to save account {account_id} position prices: {e}")
             db.rollback()
 
 
@@ -276,14 +276,27 @@ def stop_scheduler():
     task_scheduler.shutdown()
 
 
+def add_account_snapshot_job(account_id: int, interval_seconds: int = 10):
+    """Convenience function to add snapshot task for account"""
+    task_scheduler.add_account_snapshot_task(account_id, interval_seconds)
+
+
+def remove_account_snapshot_job(account_id: int):
+    """Convenience function to remove account snapshot task"""
+    task_scheduler.remove_account_snapshot_task(account_id)
+
+
+# Legacy compatibility functions
 def add_user_snapshot_job(user_id: int, interval_seconds: int = 10):
-    """Convenience function to add snapshot task for user"""
-    task_scheduler.add_user_snapshot_task(user_id, interval_seconds)
+    """Legacy function - now redirects to account-based function"""
+    # For backward compatibility, assume this is account_id
+    add_account_snapshot_job(user_id, interval_seconds)
 
 
 def remove_user_snapshot_job(user_id: int):
-    """Convenience function to remove user snapshot task"""
-    task_scheduler.remove_user_snapshot_task(user_id)
+    """Legacy function - now redirects to account-based function"""
+    # For backward compatibility, assume this is account_id
+    remove_account_snapshot_job(user_id)
 
 
 # Market hours related predefined tasks
