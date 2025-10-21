@@ -1,6 +1,11 @@
 # Open Alpha Arena
 
-DONE:
+<img width="2866" height="1526" alt="image" src="https://github.com/user-attachments/assets/b2bf90bb-0fd2-4c24-8e0d-cb26579fac55" />
+
+<img width="2882" height="1792" alt="image" src="https://github.com/user-attachments/assets/66a5283b-3761-4992-82d1-8cd01f4d518d" />
+
+
+DONE (Buggy):
 - Paper Trading
 - OpenAI compatible API
 - cctx quotes
