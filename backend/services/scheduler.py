@@ -223,7 +223,7 @@ class TaskScheduler:
 
             for position in positions:
                 try:
-                    # Check if stock price already saved today
+                    # Check if crypto price already saved today
                     existing_price = db.query(CryptoPrice).filter(
                         CryptoPrice.symbol == position.symbol,
                         CryptoPrice.market == position.market,
@@ -231,7 +231,7 @@ class TaskScheduler:
                     ).first()
 
                     if existing_price:
-                        logger.debug(f"Stock {position.symbol} price already exists for today, skip")
+                        logger.debug(f"crypto {position.symbol} price already exists for today, skip")
                         continue
 
                     # Get latest price
@@ -249,10 +249,10 @@ class TaskScheduler:
                     db.add(crypto_price)
                     db.commit()
 
-                    logger.info(f"Saved stock price: {position.symbol} {today} {current_price}")
+                    logger.info(f"Saved crypto price: {position.symbol} {today} {current_price}")
 
                 except Exception as e:
-                    logger.error(f"Failed to save stock {position.symbol} price: {e}")
+                    logger.error(f"Failed to save crypto {position.symbol} price: {e}")
                     db.rollback()
                     continue
 
@@ -316,7 +316,7 @@ async def market_close_tasks():
 
 def setup_market_tasks():
     """Set up market-related scheduled tasks"""
-    # US stock market open time: 9:30 AM ET Monday-Friday (considering time zone conversion)
+    # US crypto market open time: 9:30 AM ET Monday-Friday (considering time zone conversion)
     # Using UTC time, should adjust based on server time zone in actual deployment
     task_scheduler.add_market_hours_task(
         market_open_tasks,
@@ -324,7 +324,7 @@ def setup_market_tasks():
         "market_open"
     )
 
-    # US stock market close time: 4:00 PM ET Monday-Friday
+    # US crypto market close time: 4:00 PM ET Monday-Friday
     task_scheduler.add_market_hours_task(
         market_close_tasks,
         "0 21 * * 1-5",   # UTC time, corresponds to 4:00 PM ET

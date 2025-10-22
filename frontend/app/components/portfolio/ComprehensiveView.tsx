@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'react-hot-toast'
 import AssetCurveWithData from './AssetCurveWithData'
 import AccountSelector from '@/components/layout/AccountSelector'
+import { AIDecision } from '@/lib/api'
 
 interface Account {
   id: number
@@ -69,8 +70,10 @@ interface ComprehensiveViewProps {
   positions: Position[]
   orders: Order[]
   trades: Trade[]
+  aiDecisions: AIDecision[]
   allAssetCurves: any[]
   onSwitchUser: (username: string) => void
+  onSwitchAccount: (accountId: number) => void
   onRefreshData: () => void
 }
 
@@ -79,13 +82,19 @@ export default function ComprehensiveView({
   positions,
   orders,
   trades,
+  aiDecisions,
   allAssetCurves,
   onSwitchUser,
+  onSwitchAccount,
   onRefreshData
 }: ComprehensiveViewProps) {
 
   const switchUser = (username: string) => {
     onSwitchUser(username)
+  }
+
+  const switchAccount = (accountId: number) => {
+    onSwitchAccount(accountId)
   }
 
   const cancelOrder = async (orderId: number) => {
@@ -130,15 +139,13 @@ export default function ComprehensiveView({
           <div className="flex justify-end mb-2">
           <AccountSelector
             currentAccount={overview.account}
-            onAccountChange={(accountId) => {
-              // For now, just log - implement account switching if needed
-              console.log('Switch to account ID:', accountId)
-            }}
+            onAccountChange={switchAccount}
           />
           </div>
-          <Tabs defaultValue="positions" className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="ai-decisions" className="h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="positions">Positions</TabsTrigger>
+              <TabsTrigger value="ai-decisions">AI Decisions</TabsTrigger>
               <TabsTrigger value="orders">Orders</TabsTrigger>
               <TabsTrigger value="trades">Trades</TabsTrigger>
             </TabsList>
@@ -146,6 +153,10 @@ export default function ComprehensiveView({
             <div className="flex-1 overflow-hidden">
               <TabsContent value="positions" className="h-full overflow-y-auto">
                 <PositionList positions={positions} />
+              </TabsContent>
+
+              <TabsContent value="ai-decisions" className="h-full overflow-y-auto">
+                <AIDecisionLog aiDecisions={aiDecisions} />
               </TabsContent>
 
               <TabsContent value="orders" className="h-full overflow-y-auto">
@@ -271,6 +282,58 @@ function TradeHistory({ trades }: { trades: Trade[] }) {
               <TableCell>{t.price.toFixed(2)}</TableCell>
               <TableCell>{t.quantity}</TableCell>
               <TableCell>{t.commission.toFixed(2)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+// AI Decision Log Component
+function AIDecisionLog({ aiDecisions }: { aiDecisions: AIDecision[] }) {
+  return (
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Time</TableHead>
+            <TableHead>Operation</TableHead>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Prev %</TableHead>
+            <TableHead>Target %</TableHead>
+            <TableHead>Balance</TableHead>
+            <TableHead>Executed</TableHead>
+            <TableHead>Reason</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {aiDecisions.map(d => (
+            <TableRow key={d.id}>
+              <TableCell>{new Date(d.decision_time).toLocaleString()}</TableCell>
+              <TableCell>
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  d.operation === 'buy' ? 'bg-green-100 text-green-800' :
+                  d.operation === 'sell' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {d.operation.toUpperCase()}
+                </span>
+              </TableCell>
+              <TableCell>{d.symbol || '-'}</TableCell>
+              <TableCell>{(d.prev_portion * 100).toFixed(2)}%</TableCell>
+              <TableCell>{(d.target_portion * 100).toFixed(2)}%</TableCell>
+              <TableCell>${d.total_balance.toFixed(2)}</TableCell>
+              <TableCell>
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  d.executed === 'true' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {d.executed === 'true' ? 'Yes' : 'No'}
+                </span>
+              </TableCell>
+              <TableCell className="max-w-xs truncate" title={d.reason}>
+                {d.reason}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

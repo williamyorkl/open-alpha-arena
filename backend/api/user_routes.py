@@ -1,5 +1,5 @@
 """
-用户认证 API 路由
+User authentication API routes
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -32,7 +32,6 @@ def get_db():
 
 @router.post("/register", response_model=UserOut)
 async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
-    """用户注册"""
     try:
         # Check if username exists
         existing = get_user_by_username(db, user_data.username)
@@ -57,13 +56,12 @@ async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"用户注册失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"用户注册失败: {str(e)}")
+        logger.error(f"User registration failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"User registration failed: {str(e)}")
 
 
 @router.post("/login", response_model=UserAuthResponse)
 async def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
-    """用户登录"""
     try:
         # For now, just verify username exists and create session
         # Password verification can be implemented later
@@ -90,13 +88,12 @@ async def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"用户登录失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"用户登录失败: {str(e)}")
+        logger.error(f"User login failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"User login failed: {str(e)}")
 
 
 @router.get("/profile", response_model=UserOut)
 async def get_user_profile(session_token: str, db: Session = Depends(get_db)):
-    """获取用户资料"""
     try:
         user_id = verify_auth_session(db, session_token)
         if not user_id:
@@ -116,8 +113,8 @@ async def get_user_profile(session_token: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取用户资料失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取用户资料失败: {str(e)}")
+        logger.error(f"Failed to get user profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get user profile: {str(e)}")
 
 
 @router.put("/profile", response_model=UserOut)
@@ -126,7 +123,6 @@ async def update_user_profile(
     user_data: UserUpdate, 
     db: Session = Depends(get_db)
 ):
-    """更新用户资料"""
     try:
         user_id = verify_auth_session(db, session_token)
         if not user_id:
@@ -158,13 +154,12 @@ async def update_user_profile(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新用户资料失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"更新用户资料失败: {str(e)}")
+        logger.error(f"Failed to update user profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update user profile: {str(e)}")
 
 
 @router.get("/", response_model=List[UserOut])
 async def list_users(db: Session = Depends(get_db)):
-    """获取所有用户列表 (管理员功能)"""
     try:
         users = db.query(User).filter(User.is_active == "true").order_by(User.username).all()
         return [
@@ -178,5 +173,5 @@ async def list_users(db: Session = Depends(get_db)):
         ]
         
     except Exception as e:
-        logger.error(f"获取用户列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取用户列表失败: {str(e)}")
+        logger.error(f"Failed to list users: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list users: {str(e)}")

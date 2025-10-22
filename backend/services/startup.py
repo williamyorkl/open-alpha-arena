@@ -1,52 +1,104 @@
-"""应用启动初始化服务"""
+"""Application startup initialization service"""
 
 import logging
+import threading
 
-from services.auto_trader import schedule_auto_trading
-from services.scheduler import start_scheduler, setup_market_tasks
+from services.auto_trader import (
+    place_ai_driven_crypto_order,
+    place_random_crypto_order,
+    AUTO_TRADE_JOB_ID,
+    AI_TRADE_JOB_ID
+)
+from services.scheduler import start_scheduler, setup_market_tasks, task_scheduler
 
 logger = logging.getLogger(__name__)
 
 
 def initialize_services():
-    """初始化所有服务"""
+    """Initialize all services"""
     try:
-        # 启动调度器
+        # Start the scheduler
         start_scheduler()
-        logger.info("调度器服务已启动")
+        logger.info("Scheduler service started")
         
-        # 设置市场相关定时任务
+        # Set up market-related scheduled tasks
         setup_market_tasks()
-        logger.info("市场定时任务已设置")
+        logger.info("Market scheduled tasks have been set up")
 
-        # 启动自动加密货币模拟交易任务
-        schedule_auto_trading(interval_seconds=5)
-        logger.info("自动加密货币交易任务已开启")
+        # Start automatic cryptocurrency trading simulation task (5-minute interval)
+        schedule_auto_trading(interval_seconds=300)
+        logger.info("Automatic cryptocurrency trading task started (5-minute interval)")
         
-        logger.info("所有服务初始化完成")
+        logger.info("All services initialized successfully")
         
     except Exception as e:
-        logger.error(f"服务初始化失败: {e}")
+        logger.error(f"Service initialization failed: {e}")
         raise
 
 
 def shutdown_services():
-    """关闭所有服务"""
+    """Shut down all services"""
     try:
         from services.scheduler import stop_scheduler
         stop_scheduler()
-        logger.info("所有服务已关闭")
+        logger.info("All services have been shut down")
         
     except Exception as e:
-        logger.error(f"服务关闭失败: {e}")
+        logger.error(f"Failed to shut down services: {e}")
 
 
-# 可以在 FastAPI 应用的生命周期事件中调用
 async def startup_event():
-    """FastAPI 应用启动事件"""
+    """FastAPI application startup event"""
     initialize_services()
 
 
 async def shutdown_event():
-    """FastAPI 应用关闭事件"""
-    shutdown_services()
+    """FastAPI application shutdown event"""
+    await shutdown_services()
+
+
+def schedule_auto_trading(interval_seconds: int = 300, max_ratio: float = 0.2, use_ai: bool = True) -> None:
+    """Schedule automatic trading tasks
+    
+    Args:
+        interval_seconds: Interval between trading attempts
+        max_ratio: Maximum portion of portfolio to use per trade
+        use_ai: If True, use AI-driven trading; if False, use random trading
+    """
+    from services.auto_trader import (
+        place_ai_driven_crypto_order,
+        place_random_crypto_order,
+        AUTO_TRADE_JOB_ID,
+        AI_TRADE_JOB_ID
+    )
+
+    def execute_trade():
+        try:
+            if use_ai:
+                place_ai_driven_crypto_order(max_ratio)
+            else:
+                place_random_crypto_order(max_ratio)
+            logger.info("Initial auto-trading execution completed")
+        except Exception as e:
+            logger.error(f"Error during initial auto-trading execution: {e}")
+
+    if use_ai:
+        task_func = place_ai_driven_crypto_order
+        job_id = AI_TRADE_JOB_ID
+        logger.info("Scheduling AI-driven crypto trading")
+    else:
+        task_func = place_random_crypto_order
+        job_id = AUTO_TRADE_JOB_ID
+        logger.info("Scheduling random crypto trading")
+
+    # Schedule the recurring task
+    task_scheduler.add_interval_task(
+        task_func=task_func,
+        interval_seconds=interval_seconds,
+        task_id=job_id,
+        max_ratio=max_ratio,
+    )
+    
+    # Execute the first trade immediately in a separate thread to avoid blocking
+    initial_trade = threading.Thread(target=execute_trade, daemon=True)
+    initial_trade.start()

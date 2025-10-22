@@ -4,8 +4,9 @@
 
 <img width="2882" height="1792" alt="image" src="https://github.com/user-attachments/assets/66a5283b-3761-4992-82d1-8cd01f4d518d" />
 
+This is a project inspired by [nof1 Alpha Arena](https://nof1.ai), you can setup AI trading bot on crypto market.
 
-DONE (Buggy):
+DONE:
 - Paper Trading
 - OpenAI compatible API
 - cctx quotes

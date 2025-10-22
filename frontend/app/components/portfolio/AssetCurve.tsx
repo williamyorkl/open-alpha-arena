@@ -99,7 +99,7 @@ export default function AssetCurve() {
       })
     }),
     datasets: users.map((username, index) => ({
-      label: username.replace('demo_', '').toUpperCase(),
+      label: username.replace('default_', '').toUpperCase(),
       data: dates.map(date => groupedData[date][username] || 0),
       borderColor: colors[index % colors.length],
       backgroundColor: colors[index % colors.length].replace('rgb', 'rgba').replace(')', ', 0.1)'),

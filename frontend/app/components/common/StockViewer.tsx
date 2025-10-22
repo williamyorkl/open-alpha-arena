@@ -10,59 +10,59 @@ declare global {
   }
 }
 
-interface StockInfo {
+interface cryptoInfo {
   item: string
   value: string
 }
 
-interface StockViewerProps {
+interface cryptoViewerProps {
   symbol: string | null
   title?: string
   subtitle?: string
   className?: string
 }
 
-export default function StockViewer({ symbol, title, subtitle, className = "" }: StockViewerProps) {
-  const [stockInfo, setStockInfo] = useState<StockInfo[]>([])
-  const [stockInfoLoading, setStockInfoLoading] = useState(false)
-  const [stockInfoError, setStockInfoError] = useState<string | null>(null)
+export default function cryptoViewer({ symbol, title, subtitle, className = "" }: cryptoViewerProps) {
+  const [cryptoInfo, setcryptoInfo] = useState<cryptoInfo[]>([])
+  const [cryptoInfoLoading, setcryptoInfoLoading] = useState(false)
+  const [cryptoInfoError, setcryptoInfoError] = useState<string | null>(null)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const tradingViewContainerId = useMemo(
     () => `tradingview-widget-${Math.random().toString(36).slice(2)}`,
     []
   )
 
-  const fetchStockInfo = async (symbol: string) => {
+  const fetchcryptoInfo = async (symbol: string) => {
     if (!symbol) return
 
-    setStockInfoLoading(true)
-    setStockInfoError(null)
+    setcryptoInfoLoading(true)
+    setcryptoInfoError(null)
 
     try {
-      const response = await fetch(`/api/ranking/stock-info/${symbol}`)
+      const response = await fetch(`/api/ranking/crypto-info/${symbol}`)
       const data = await response.json()
       
       if (data.success) {
-        setStockInfo(data.data || [])
+        setcryptoInfo(data.data || [])
       } else {
-        setStockInfoError(data.error || 'Failed to fetch stock info')
-        setStockInfo([])
+        setcryptoInfoError(data.error || 'Failed to fetch crypto info')
+        setcryptoInfo([])
       }
     } catch (err) {
-      setStockInfoError('Failed to connect to server')
-      setStockInfo([])
-      console.error('Error fetching stock info:', err)
+      setcryptoInfoError('Failed to connect to server')
+      setcryptoInfo([])
+      console.error('Error fetching crypto info:', err)
     } finally {
-      setStockInfoLoading(false)
+      setcryptoInfoLoading(false)
     }
   }
 
   useEffect(() => {
     if (symbol && symbol !== 'IXIC') {
-      fetchStockInfo(symbol)
+      fetchcryptoInfo(symbol)
     } else {
-      setStockInfo([])
-      setStockInfoError(null)
+      setcryptoInfo([])
+      setcryptoInfoError(null)
     }
   }, [symbol])
 
@@ -72,7 +72,7 @@ export default function StockViewer({ symbol, title, subtitle, className = "" }:
     <div className={className}>
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-lg font-medium">
-          {title || (symbol ? `${symbol} - Stock Chart` : 'Select a stock')}
+          {title || (symbol ? `${symbol} - crypto Chart` : 'Select a crypto')}
         </h2>
         {subtitle && <div className="text-sm text-muted-foreground">{subtitle}</div>}
       </div>
@@ -85,25 +85,25 @@ export default function StockViewer({ symbol, title, subtitle, className = "" }:
         />
       </div>
 
-      {/* Stock Info Section */}
+      {/* crypto Info Section */}
       <div className="border-t pt-4">
-        {stockInfoLoading && (
+        {cryptoInfoLoading && (
           <div className="flex items-center justify-center py-4">
             <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-            <span className="text-sm">Loading stock info...</span>
+            <span className="text-sm">Loading crypto info...</span>
           </div>
         )}
 
-        {stockInfoError && (
+        {cryptoInfoError && (
           <div className="text-red-700 text-sm">
-            {stockInfoError}
+            {cryptoInfoError}
           </div>
         )}
 
-        {!stockInfoLoading && !stockInfoError && stockInfo.length > 0 && (
+        {!cryptoInfoLoading && !cryptoInfoError && cryptoInfo.length > 0 && (
           <div className="max-h-[28vh] overflow-y-auto">
             <div className="grid grid-cols-1 gap-1 text-sm">
-              {stockInfo.map((info, index) => (
+              {cryptoInfo.map((info, index) => (
                 <div key={index} className="flex justify-between py-1 border-b border-gray-500 last:border-b-0">
                   <span className="font-medium text-gray-600 truncate mr-2">{info.item}:</span>
                   <span className="text-left">{info.value || '-'}</span>
@@ -113,7 +113,7 @@ export default function StockViewer({ symbol, title, subtitle, className = "" }:
           </div>
         )}
 
-        {!stockInfoLoading && !stockInfoError && stockInfo.length === 0 && symbol && symbol !== 'IXIC' && (
+        {!cryptoInfoLoading && !cryptoInfoError && cryptoInfo.length === 0 && symbol && symbol !== 'IXIC' && (
           <div className="text-center py-4 text-gray-500 text-sm">
             No information available for {symbol}
           </div>
@@ -121,7 +121,7 @@ export default function StockViewer({ symbol, title, subtitle, className = "" }:
 
         {(!symbol || symbol === 'IXIC') && (
           <div className="text-center py-4 text-gray-500 text-sm">
-            Select a stock to view information
+            Select a crypto to view information
           </div>
         )}
       </div>

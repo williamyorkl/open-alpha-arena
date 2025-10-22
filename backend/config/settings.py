@@ -11,7 +11,7 @@ class MarketConfig(BaseModel):
     lot_size: int = 1
 
 
-# Demo default configs for CRYPTO markets
+#  default configs for CRYPTO markets
 DEFAULT_TRADING_CONFIGS: Dict[str, MarketConfig] = {
     "CRYPTO": MarketConfig(
         market="CRYPTO",

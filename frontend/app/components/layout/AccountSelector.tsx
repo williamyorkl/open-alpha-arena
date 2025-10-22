@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { getDemoAccounts, getDemoOverview, TradingAccount } from '@/lib/api'
+import { getAccounts, getOverview, TradingAccount } from '@/lib/api'
 
 interface Account {
   id: number
@@ -29,7 +29,7 @@ interface AccountSelectorProps {
 // Use relative path to work with proxy
 const API_BASE = '/api'
 
-export default function AccountSelector({ currentAccount, onAccountChange, username = "demo" }: AccountSelectorProps) {
+export default function AccountSelector({ currentAccount, onAccountChange, username = "default" }: AccountSelectorProps) {
   const [accounts, setAccounts] = useState<AccountWithAssets[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -39,12 +39,12 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
 
   const fetchAccounts = async () => {
     try {
-      // Use demo mode API for simulation
-      const accountData = await getDemoAccounts(username)
+      // Use default functions with hardcoded username for paper trading
+      const accountData = await getAccounts()
       console.log('Fetched accounts:', accountData)
       
       // Fetch overview data to get total_assets
-      const overview = await getDemoOverview(username)
+      const overview = await getOverview()
       
       // Map accounts with assets info
       const accountsWithAssets: AccountWithAssets[] = accountData.map(account => ({

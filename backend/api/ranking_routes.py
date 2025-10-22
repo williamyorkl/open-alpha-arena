@@ -1,5 +1,5 @@
 """
-Ranking API routes for factor-based stock rankings
+Ranking API routes for factor-based crypto rankings
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -53,7 +53,7 @@ async def get_ranking_table(
     db: Session = Depends(get_db),
     days: int = Query(100, description="Number of days of historical data to use"),
     factors: Optional[str] = Query(None, description="Comma-separated list of factor IDs to compute"),
-    limit: int = Query(50, description="Maximum number of stocks to return")
+    limit: int = Query(50, description="Maximum number of cryptos to return")
 ):
     """Get ranking table based on factors computed from recent K-line data"""
     # Calculate date range

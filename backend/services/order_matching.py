@@ -30,8 +30,8 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
     Args:
         db: Database session
         account: Account object
-        symbol: Stock Symbol
-        name: Stock name
+        symbol: crypto Symbol
+        name: crypto name
         market: Market Symbol
         side: Buy/side direction (BUY/SELL)
         order_type: Order type (MARKET/LIMIT)
@@ -214,7 +214,7 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
         # Re-check funds and positions (prevent concurrency issues)
         if order.side == "BUY":
             cash_needed = notional + commission
-            if Decimal(str(user.current_cash)) < cash_needed:
+            if Decimal(str(account.current_cash)) < cash_needed:
                 logger.warning(f"Insufficient cash when executing order {order.order_no}")
                 return False
                 

@@ -27,19 +27,19 @@ def create_user(
 
 def get_or_create_user(
     db: Session, 
-    username: str = "demo",
+    username: str = "default",
     email: str = None,
     password: str = None
 ) -> User:
-    """Get or create user for demo mode
+    """Get or create user for default mode
     
-    Note: For demo/simulation mode, creates user without authentication.
+    Note: For default/simulation mode, creates user without authentication.
     """
     user = db.query(User).filter(User.username == username).first()
     if user:
         return user
     
-    # Create demo user without password requirement
+    # Create default user without password requirement
     return create_user(db, username, email, password)
 
 

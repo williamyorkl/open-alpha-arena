@@ -45,7 +45,7 @@ interface AssetCurveProps {
 type Timeframe = '5m' | '1h' | '1d'
 
 export default function AssetCurve({ data: initialData }: AssetCurveProps) {
-  const [timeframe, setTimeframe] = useState<Timeframe>('1d')
+  const [timeframe, setTimeframe] = useState<Timeframe>('5m')
   const [data, setData] = useState<AssetCurveData[]>(initialData || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -150,7 +150,7 @@ export default function AssetCurve({ data: initialData }: AssetCurveProps) {
   const chartData = {
     labels: timestamps.map(formatLabel),
     datasets: users.map((username, index) => ({
-      label: username.replace('demo_', '').toUpperCase(),
+      label: username.replace('default_', '').toUpperCase(),
       data: timestamps.map(ts => groupedData[ts][username] || 0),
       borderColor: colors[index % colors.length],
       backgroundColor: colors[index % colors.length].replace('rgb', 'rgba').replace(')', ', 0.1)'),
@@ -263,7 +263,7 @@ export default function AssetCurve({ data: initialData }: AssetCurveProps) {
                 <div className="text-lg font-bold text-primary">#{index + 1}</div>
                 <div>
                   <div className="text-sm font-medium text-secondary-foreground">
-                    {account.username.replace('demo_', '').toUpperCase()}
+                    {account.username.replace('default_', '').toUpperCase()}
                   </div>
                   <div className="text-lg font-bold text-secondary-foreground">
                     ${account.assets.toLocaleString('en-US', {

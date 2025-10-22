@@ -7,7 +7,10 @@ from .connection import Base
 
 
 class User(Base):
-    """User for authentication and account management"""
+    """
+    User for authentication and account management
+    In this project, use the default user, no user login
+    """
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -70,10 +73,6 @@ class UserAuthSession(Base):
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     
     user = relationship("User", back_populates="auth_sessions")
-
-
-# REMOVED: AIAccount table - merged into User table above
-# All accounts are now AI Trader Accounts with both trading and AI capabilities
 
 
 class Position(Base):
@@ -207,6 +206,27 @@ class CryptoKline(Base):
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
 
     __table_args__ = (UniqueConstraint('symbol', 'market', 'period', 'timestamp'),)
+
+
+class AIDecisionLog(Base):
+    __tablename__ = "ai_decision_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    decision_time = Column(TIMESTAMP, server_default=func.current_timestamp(), index=True)
+    reason = Column(String(1000), nullable=False)  # AI reasoning for the decision
+    operation = Column(String(10), nullable=False)  # buy/sell/hold
+    symbol = Column(String(20), nullable=True)  # symbol for buy/sell operations
+    prev_portion = Column(DECIMAL(10, 6), nullable=False, default=0)  # previous balance portion
+    target_portion = Column(DECIMAL(10, 6), nullable=False)  # target balance portion
+    total_balance = Column(DECIMAL(18, 2), nullable=False)  # total balance at decision time
+    executed = Column(String(10), nullable=False, default="false")  # whether the decision was executed
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)  # linked order if executed
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationships
+    account = relationship("Account")
+    order = relationship("Order")
 
 
 # CRYPTO market trading configuration constants

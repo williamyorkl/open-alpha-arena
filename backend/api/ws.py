@@ -11,7 +11,7 @@ from repositories.position_repo import list_positions
 from services.asset_calculator import calc_positions_value
 from services.market_data import get_last_price
 from services.scheduler import add_account_snapshot_job, remove_account_snapshot_job
-from database.models import Trade, User, Account, CryptoPrice
+from database.models import Trade, User, Account, CryptoPrice, AIDecisionLog
 from sqlalchemy import func
 from datetime import datetime, timedelta, date
 import logging
@@ -255,6 +255,9 @@ async def _send_snapshot(db: Session, account_id: int):
     trades = (
         db.query(Trade).filter(Trade.account_id == account_id).order_by(Trade.trade_time.desc()).limit(20).all()
     )
+    ai_decisions = (
+        db.query(AIDecisionLog).filter(AIDecisionLog.account_id == account_id).order_by(AIDecisionLog.decision_time.desc()).limit(20).all()
+    )
     positions_value = calc_positions_value(db, account_id)
 
     overview = {
@@ -335,6 +338,21 @@ async def _send_snapshot(db: Session, account_id: int):
             }
             for t in trades
         ],
+        "ai_decisions": [
+            {
+                "id": d.id,
+                "decision_time": str(d.decision_time),
+                "reason": d.reason,
+                "operation": d.operation,
+                "symbol": d.symbol,
+                "prev_portion": float(d.prev_portion),
+                "target_portion": float(d.target_portion),
+                "total_balance": float(d.total_balance),
+                "executed": d.executed,
+                "order_id": d.order_id,
+            }
+            for d in ai_decisions
+        ],
         "all_asset_curves": get_all_asset_curves_data(db),  # 添加所有账户的资产曲线数据
     }
 
@@ -361,8 +379,8 @@ async def websocket_endpoint(websocket: WebSocket):
             db: Session = SessionLocal()
             try:
                 if kind == "bootstrap":
-                    # Demo mode: Create or get default demo user
-                    username = msg.get("username", "demo")
+                    #  mode: Create or get default default user
+                    username = msg.get("username", "default")
                     user = get_or_create_user(db, username)
                     
                     # Get or create default account for this user
@@ -419,11 +437,43 @@ async def websocket_endpoint(websocket: WebSocket):
                         }
                     })
                     await _send_snapshot(db, user_id)
+                elif kind == "switch_account":
+                    # Switch to different account by ID
+                    target_account_id = msg.get("account_id")
+                    if not target_account_id:
+                        await websocket.send_text(json.dumps({"type": "error", "message": "account_id required"}))
+                        continue
+
+                    # Unregister from current account if any
+                    if account_id is not None:
+                        manager.unregister(account_id, websocket)
+
+                    # Get target account
+                    target_account = get_account(db, target_account_id)
+                    if not target_account:
+                        await websocket.send_text(json.dumps({"type": "error", "message": "account not found"}))
+                        continue
+
+                    account_id = target_account.id
+                    
+                    # Register to new account
+                    manager.register(account_id, websocket)
+
+                    # Send confirmation and snapshot
+                    await manager.send_to_account(account_id, {
+                        "type": "account_switched",
+                        "account": {
+                            "id": target_account.id,
+                            "user_id": target_account.user_id,
+                            "name": target_account.name
+                        }
+                    })
+                    await _send_snapshot(db, account_id)
                 elif kind == "get_snapshot":
-                    if user_id is not None:
-                        await _send_snapshot(db, user_id)
+                    if account_id is not None:
+                        await _send_snapshot(db, account_id)
                 elif kind == "place_order":
-                    if user_id is None:
+                    if account_id is None:
                         await websocket.send_text(json.dumps({"type": "error", "message": "not authenticated"}))
                         continue
 
@@ -431,8 +481,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Import the order creation service
                         from services.order_matching import create_order
 
-                        # Get user object
-                        user = get_user(db, user_id)
+                        # Get account and user object
+                        account = get_account(db, account_id)
+                        if not account:
+                            await websocket.send_text(json.dumps({"type": "error", "message": "account not found"}))
+                            continue
+
+                        user = get_user(db, account.user_id)
                         if not user:
                             await websocket.send_text(json.dumps({"type": "error", "message": "user not found"}))
                             continue
@@ -475,10 +530,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         db.commit()
 
                         # Send success response
-                        await manager.send_to_user(user_id, {"type": "order_pending", "order_id": order.id})
+                        await manager.send_to_account(account_id, {"type": "order_pending", "order_id": order.id})
 
                         # Send updated snapshot
-                        await _send_snapshot(db, user_id)
+                        await _send_snapshot(db, account_id)
 
                     except ValueError as e:
                         # Business logic errors (insufficient funds, etc.)
@@ -496,10 +551,14 @@ async def websocket_endpoint(websocket: WebSocket):
             finally:
                 db.close()
     except WebSocketDisconnect:
+        if account_id is not None:
+            manager.unregister(account_id, websocket)
         if user_id is not None:
             manager.unregister(user_id, websocket)
         return
     finally:
-        # 确保用户断开连接时清理资源
+        # Clean up resources when user disconnects
+        if account_id is not None:
+            manager.unregister(account_id, websocket)
         if user_id is not None:
             manager.unregister(user_id, websocket)

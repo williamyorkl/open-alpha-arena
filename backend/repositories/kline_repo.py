@@ -1,12 +1,12 @@
 """
-K线数据仓库模块
-提供K线数据的数据库操作功能
+K-line data repository module
+Provides K-line data database operations
 """
 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Optional
-from database.models import StockKline
+from database.models import cryptoKline
 from database.connection import get_db
 
 
@@ -16,16 +16,16 @@ class KlineRepository:
 
     def save_kline_data(self, symbol: str, market: str, period: str, kline_data: List[dict]) -> dict:
         """
-        保存K线数据到数据库（使用upsert模式）
-        
+        Save K-line data to database (using upsert mode)
+
         Args:
-            symbol: 股票Symbol
-            market: 市场Symbol
-            period: 时间周期
-            kline_data: K线数据列表
-            
+            symbol: Stock symbol
+            market: Market symbol
+            period: Time period
+            kline_data: K-line data list
+
         Returns:
-            保存结果字典，包含新增和更新的数量
+            Save result dict, contains inserted and updated counts
         """
         inserted_count = 0
         updated_count = 0
@@ -35,13 +35,13 @@ class KlineRepository:
             if not timestamp:
                 continue
                 
-            # 检查是否已存在相同时间戳的记录
-            existing = self.db.query(StockKline).filter(
+            # Check if record with same timestamp already exists
+            existing = self.db.query(cryptoKline).filter(
                 and_(
-                    StockKline.symbol == symbol,
-                    StockKline.market == market,
-                    StockKline.period == period,
-                    StockKline.timestamp == timestamp
+                    cryptoKline.symbol == symbol,
+                    cryptoKline.market == market,
+                    cryptoKline.period == period,
+                    cryptoKline.timestamp == timestamp
                 )
             ).first()
             
@@ -62,14 +62,14 @@ class KlineRepository:
             }
             
             if existing:
-                # 更新现有记录
+                # Update existing record
                 for key, value in kline_data_dict.items():
-                    if key not in ['symbol', 'market', 'period', 'timestamp']:  # 不更新主键字段
+                    if key not in ['symbol', 'market', 'period', 'timestamp']:  # Don't update primary key fields
                         setattr(existing, key, value)
                 updated_count += 1
             else:
-                # 插入新记录
-                kline_record = StockKline(**kline_data_dict)
+                # Insert new record
+                kline_record = cryptoKline(**kline_data_dict)
                 self.db.add(kline_record)
                 inserted_count += 1
         
@@ -82,46 +82,46 @@ class KlineRepository:
             'total': inserted_count + updated_count
         }
 
-    def get_kline_data(self, symbol: str, market: str, period: str, limit: int = 100) -> List[StockKline]:
+    def get_kline_data(self, symbol: str, market: str, period: str, limit: int = 100) -> List[cryptoKline]:
         """
-        获取K线数据
-        
+        Get K-line data
+
         Args:
-            symbol: 股票Symbol
-            market: 市场Symbol
-            period: 时间周期
-            limit: 限制数量
-            
+            symbol: Stock symbol
+            market: Market symbol
+            period: Time period
+            limit: Limit count
+
         Returns:
-            K线数据列表
+            K-line data list
         """
-        return self.db.query(StockKline).filter(
+        return self.db.query(cryptoKline).filter(
             and_(
-                StockKline.symbol == symbol,
-                StockKline.market == market,
-                StockKline.period == period
+                cryptoKline.symbol == symbol,
+                cryptoKline.market == market,
+                cryptoKline.period == period
             )
-        ).order_by(StockKline.timestamp.desc()).limit(limit).all()
+        ).order_by(cryptoKline.timestamp.desc()).limit(limit).all()
 
     def delete_old_kline_data(self, symbol: str, market: str, period: str, keep_days: int = 30):
         """
-        删除旧的K线数据
-        
+        Delete old K-line data
+
         Args:
-            symbol: 股票Symbol
-            market: 市场Symbol
-            period: 时间周期
-            keep_days: 保留天数
+            symbol: Stock symbol
+            market: Market symbol
+            period: Time period
+            keep_days: Days to keep
         """
         import time
         cutoff_timestamp = int((time.time() - keep_days * 24 * 3600) * 1000)
         
-        self.db.query(StockKline).filter(
+        self.db.query(cryptoKline).filter(
             and_(
-                StockKline.symbol == symbol,
-                StockKline.market == market,
-                StockKline.period == period,
-                StockKline.timestamp < cutoff_timestamp
+                cryptoKline.symbol == symbol,
+                cryptoKline.market == market,
+                cryptoKline.period == period,
+                cryptoKline.timestamp < cutoff_timestamp
             )
         ).delete()
         

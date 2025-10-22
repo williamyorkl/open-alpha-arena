@@ -8,18 +8,19 @@ import requests
 from sqlalchemy.orm import Session
 
 from database.connection import SessionLocal
-from database.models import Position, User, Account
+from database.models import Position, User, Account, AIDecisionLog
 from services.asset_calculator import calc_positions_value
 from services.market_data import get_last_price
 from services.order_matching import create_order, check_and_execute_order
+from services.news_feed import fetch_latest_news
 
 
 logger = logging.getLogger(__name__)
 
-# Demo mode API keys that should be skipped
+#  mode API keys that should be skipped
 DEMO_API_KEYS = {
-    "demo-key-please-update-in-settings",
-    "demo",
+    "default-key-please-update-in-settings",
+    "default",
     "",
     None
 }
@@ -36,8 +37,8 @@ SUPPORTED_SYMBOLS: Dict[str, str] = {
 AI_TRADING_SYMBOLS: List[str] = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"]
 
 
-def _is_demo_api_key(api_key: str) -> bool:
-    """Check if the API key is a demo/placeholder key that should be skipped"""
+def _is_default_api_key(api_key: str) -> bool:
+    """Check if the API key is a default/placeholder key that should be skipped"""
     return api_key in DEMO_API_KEYS
 
 
@@ -80,12 +81,15 @@ def _get_market_prices(symbols: List[str]) -> Dict[str, float]:
 
 def _call_ai_for_decision(account: Account, portfolio: Dict, prices: Dict[str, float]) -> Optional[Dict]:
     """Call AI model API to get trading decision"""
-    # Check if this is a demo API key
-    if _is_demo_api_key(account.api_key):
-        logger.info(f"Skipping AI trading for account {account.name} - using demo API key")
+    # Check if this is a default API key
+    if _is_default_api_key(account.api_key):
+        logger.info(f"Skipping AI trading for account {account.name} - using default API key")
         return None
     
     try:
+        news_summary = fetch_latest_news()
+        news_section = news_summary if news_summary else "No recent CoinJournal news available."
+
         prompt = f"""You are a cryptocurrency trading AI. Based on the following portfolio and market data, decide on a trading action.
 
 Portfolio Data:
@@ -96,6 +100,9 @@ Portfolio Data:
 
 Current Market Prices:
 {json.dumps(prices, indent=2)}
+
+Latest Crypto News (CoinJournal):
+{news_section}
 
 Analyze the market and portfolio, then respond with ONLY a JSON object in this exact format:
 {{
@@ -118,14 +125,27 @@ Rules:
             "Authorization": f"Bearer {account.api_key}"
         }
         
+        # Use OpenAI-compatible chat completions format
         payload = {
             "model": account.model,
-            "input": prompt,
-            "response_format": "text"
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
         }
         
+        # Construct API endpoint URL
+        # Remove trailing slash from base_url if present
+        base_url = account.base_url.rstrip('/')
+        # Use /chat/completions endpoint (OpenAI-compatible)
+        api_endpoint = f"{base_url}/chat/completions"
+        
         response = requests.post(
-            f"{account.base_url}/responses",
+            api_endpoint,
             headers=headers,
             json=payload,
             timeout=30
@@ -137,23 +157,32 @@ Rules:
         
         result = response.json()
         
-        # Extract text from response
-        if "output" in result and len(result["output"]) > 0:
-            output_item = result["output"][0]
-            if "content" in output_item and len(output_item["content"]) > 0:
-                text_content = output_item["content"][0].get("text", "")
+        # Extract text from OpenAI-compatible response format
+        if "choices" in result and len(result["choices"]) > 0:
+            message = result["choices"][0].get("message", {})
+            text_content = message.get("content", "")
+            
+            if not text_content:
+                logger.error(f"Empty content in AI response: {result}")
+                return None
                 
-                # Try to extract JSON from the text
-                # Sometimes AI might wrap JSON in markdown code blocks
-                text_content = text_content.strip()
-                if "```json" in text_content:
-                    text_content = text_content.split("```json")[1].split("```")[0].strip()
-                elif "```" in text_content:
-                    text_content = text_content.split("```")[1].split("```")[0].strip()
-                
-                decision = json.loads(text_content)
-                logger.info(f"AI decision for {account.name}: {decision}")
-                return decision
+            # Try to extract JSON from the text
+            # Sometimes AI might wrap JSON in markdown code blocks
+            text_content = text_content.strip()
+            if "```json" in text_content:
+                text_content = text_content.split("```json")[1].split("```")[0].strip()
+            elif "```" in text_content:
+                text_content = text_content.split("```")[1].split("```")[0].strip()
+            
+            decision = json.loads(text_content)
+            
+            # Validate that decision is a dict with required structure
+            if not isinstance(decision, dict):
+                logger.error(f"AI response is not a dict: {type(decision)}")
+                return None
+            
+            logger.info(f"AI decision for {account.name}: {decision}")
+            return decision
         
         logger.error(f"Unexpected AI response format: {result}")
         return None
@@ -163,14 +192,64 @@ Rules:
         return None
     except json.JSONDecodeError as err:
         logger.error(f"Failed to parse AI response as JSON: {err}")
+        # Try to log the content that failed to parse
+        try:
+            if 'text_content' in locals():
+                logger.error(f"Content that failed to parse: {text_content[:500]}")
+        except:
+            pass
         return None
     except Exception as err:
-        logger.error(f"Unexpected error calling AI: {err}")
+        logger.error(f"Unexpected error calling AI: {err}", exc_info=True)
         return None
+
+
+def _save_ai_decision(db: Session, account: Account, decision: Dict, portfolio: Dict, executed: bool = False, order_id: Optional[int] = None) -> None:
+    """Save AI decision to the decision log"""
+    try:
+        operation = decision.get("operation", "").lower() if decision.get("operation") else ""
+        symbol_raw = decision.get("symbol")
+        symbol = symbol_raw.upper() if symbol_raw else None
+        target_portion = float(decision.get("target_portion_of_balance", 0)) if decision.get("target_portion_of_balance") is not None else 0.0
+        reason = decision.get("reason", "No reason provided")
+        
+        # Calculate previous portion for the symbol
+        prev_portion = 0.0
+        if operation in ["sell", "hold"] and symbol:
+            positions = portfolio.get("positions", {})
+            if symbol in positions:
+                symbol_value = positions[symbol]["current_value"]
+                total_balance = portfolio["total_assets"]
+                if total_balance > 0:
+                    prev_portion = symbol_value / total_balance
+        
+        # Create decision log entry
+        decision_log = AIDecisionLog(
+            account_id=account.id,
+            reason=reason,
+            operation=operation,
+            symbol=symbol if operation != "hold" else None,
+            prev_portion=Decimal(str(prev_portion)),
+            target_portion=Decimal(str(target_portion)),
+            total_balance=Decimal(str(portfolio["total_assets"])),
+            executed="true" if executed else "false",
+            order_id=order_id
+        )
+        
+        db.add(decision_log)
+        db.commit()
+        
+        symbol_str = symbol if symbol else "N/A"
+        logger.info(f"Saved AI decision log for account {account.name}: {operation} {symbol_str} "
+                   f"prev_portion={prev_portion:.4f} target_portion={target_portion:.4f} executed={executed}")
+        
+    except Exception as err:
+        logger.error(f"Failed to save AI decision log: {err}")
+        db.rollback()
 
 
 def _choose_account(db: Session) -> Optional[Account]:
-    """Choose a random active AI account that is not using demo API key"""
+    """Choose a random active AI account that is not using default API key"""
     accounts = db.query(Account).filter(
         Account.is_active == "true",
         Account.account_type == "AI"
@@ -179,11 +258,11 @@ def _choose_account(db: Session) -> Optional[Account]:
     if not accounts:
         return None
     
-    # Filter out demo accounts
-    valid_accounts = [acc for acc in accounts if not _is_demo_api_key(acc.api_key)]
+    # Filter out default accounts
+    valid_accounts = [acc for acc in accounts if not _is_default_api_key(acc.api_key)]
     
     if not valid_accounts:
-        logger.debug("No valid AI accounts found (all using demo keys)")
+        logger.debug("No valid AI accounts found (all using default keys)")
         return None
         
     return random.choice(valid_accounts)
@@ -251,13 +330,13 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
 
         # Call AI for trading decision
         decision = _call_ai_for_decision(account, portfolio, prices)
-        if not decision:
+        if not decision or not isinstance(decision, dict):
             logger.warning(f"Failed to get AI decision for {account.name}, skipping")
             return
 
-        operation = decision.get("operation", "").lower()
-        symbol = decision.get("symbol", "").upper()
-        target_portion = float(decision.get("target_portion_of_balance", 0))
+        operation = decision.get("operation", "").lower() if decision.get("operation") else ""
+        symbol = decision.get("symbol", "").upper() if decision.get("symbol") else ""
+        target_portion = float(decision.get("target_portion_of_balance", 0)) if decision.get("target_portion_of_balance") is not None else 0
         reason = decision.get("reason", "No reason provided")
 
         logger.info(f"AI decision for {account.name}: {operation} {symbol} (portion: {target_portion:.2%}) - {reason}")
@@ -265,24 +344,34 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
         # Validate decision
         if operation not in ["buy", "sell", "hold"]:
             logger.warning(f"Invalid operation '{operation}' from AI, skipping")
+            # Save invalid decision for debugging
+            _save_ai_decision(db, account, decision, portfolio, executed=False)
             return
         
         if operation == "hold":
             logger.info(f"AI decided to HOLD for {account.name}")
+            # Save hold decision
+            _save_ai_decision(db, account, decision, portfolio, executed=True)
             return
 
         if symbol not in SUPPORTED_SYMBOLS:
             logger.warning(f"Invalid symbol '{symbol}' from AI, skipping")
+            # Save invalid decision for debugging
+            _save_ai_decision(db, account, decision, portfolio, executed=False)
             return
 
         if target_portion <= 0 or target_portion > 1:
             logger.warning(f"Invalid target_portion {target_portion} from AI, skipping")
+            # Save invalid decision for debugging
+            _save_ai_decision(db, account, decision, portfolio, executed=False)
             return
 
         # Get current price
         price = prices.get(symbol)
         if not price or price <= 0:
             logger.warning(f"Invalid price for {symbol}, skipping")
+            # Save decision with execution failure
+            _save_ai_decision(db, account, decision, portfolio, executed=False)
             return
 
         # Calculate quantity based on operation
@@ -294,6 +383,8 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
             
             if quantity < 1:
                 logger.info(f"Calculated BUY quantity < 1 for {symbol}, skipping")
+                # Save decision with execution failure
+                _save_ai_decision(db, account, decision, portfolio, executed=False)
                 return
             
             side = "BUY"
@@ -308,6 +399,8 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
             
             if not position or float(position.available_quantity) <= 0:
                 logger.info(f"No position available to SELL for {symbol}, skipping")
+                # Save decision with execution failure
+                _save_ai_decision(db, account, decision, portfolio, executed=False)
                 return
             
             available_quantity = int(position.available_quantity)
@@ -346,11 +439,15 @@ def place_ai_driven_crypto_order(max_ratio: float = 0.2) -> None:
                 f"AI order executed: account={account.name} {side} {symbol} {order.order_no} "
                 f"quantity={quantity} reason='{reason}'"
             )
+            # Save successful decision with order info
+            _save_ai_decision(db, account, decision, portfolio, executed=True, order_id=order.id)
         else:
             logger.info(
                 f"AI order created: account={account.name} {side} {symbol} "
                 f"quantity={quantity} order_id={order.order_no} reason='{reason}'"
             )
+            # Save decision with order created but not executed
+            _save_ai_decision(db, account, decision, portfolio, executed=False, order_id=order.id)
 
     except Exception as err:
         logger.error(f"AI-driven order placement failed: {err}", exc_info=True)
@@ -420,30 +517,3 @@ def place_random_crypto_order(max_ratio: float = 0.2) -> None:
 
 AUTO_TRADE_JOB_ID = "auto_crypto_trade"
 AI_TRADE_JOB_ID = "ai_crypto_trade"
-
-
-def schedule_auto_trading(interval_seconds: int = 300, max_ratio: float = 0.2, use_ai: bool = True) -> None:
-    """Schedule automatic trading tasks
-    
-    Args:
-        interval_seconds: Interval between trading attempts
-        max_ratio: Maximum portion of portfolio to use per trade
-        use_ai: If True, use AI-driven trading; if False, use random trading
-    """
-    from services.scheduler import task_scheduler
-
-    if use_ai:
-        task_func = place_ai_driven_crypto_order
-        job_id = AI_TRADE_JOB_ID
-        logger.info("Scheduling AI-driven crypto trading")
-    else:
-        task_func = place_random_crypto_order
-        job_id = AUTO_TRADE_JOB_ID
-        logger.info("Scheduling random crypto trading")
-
-    task_scheduler.add_interval_task(
-        task_func=task_func,
-        interval_seconds=interval_seconds,
-        task_id=job_id,
-        max_ratio=max_ratio,
-    )

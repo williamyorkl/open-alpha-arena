@@ -54,7 +54,7 @@ def get_or_create_default_account(
     initial_capital: float = 10000.0,
     model: str = "gpt-4-turbo",
     base_url: str = "https://api.openai.com/v1",
-    api_key: str = "demo-key-please-update-in-settings"
+    api_key: str = "default-key-please-update-in-settings"
 ) -> Account:
     """Get existing account or create default AI account for user"""
     # Check if user has any accounts

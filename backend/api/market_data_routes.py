@@ -1,6 +1,6 @@
 """
 Market data API routes
-Provides RESTful API interfaces for stock market data
+Provides RESTful API interfaces for crypto market data
 """
 
 from fastapi import APIRouter, HTTPException
@@ -56,12 +56,12 @@ class MarketStatusResponse(BaseModel):
 
 
 @router.get("/price/{symbol}", response_model=PriceResponse)
-async def get_stock_price(symbol: str, market: str = "US"):
+async def get_crypto_price(symbol: str, market: str = "US"):
     """
-    Get latest stock price
+    Get latest crypto price
 
     Args:
-        symbol: Stock symbol, such as 'MSFT'
+        symbol: crypto symbol, such as 'MSFT'
         market: Market symbol, default 'US'
 
     Returns:
@@ -78,30 +78,26 @@ async def get_stock_price(symbol: str, market: str = "US"):
             timestamp=int(time.time() * 1000)
         )
     except Exception as e:
-        logger.error(f"Failed to get stock price: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get stock price: {str(e)}")
+        logger.error(f"Failed to get crypto price: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get crypto price: {str(e)}")
 
 
 @router.get("/prices", response_model=List[PriceResponse])
-async def get_multiple_prices(symbols: str, market: str = "US"):
+async def get_multiple_prices(symbols: str, market: str = "hyperliquid"):
     """
-    Get latest prices for multiple stocks in batch
-
-    Args:
-        symbols: Stock symbol list, comma separated, such as 'MSFT,AAPL,TSLA'
-        market: Market symbol, default 'US'
+    Get latest prices for multiple cryptos in batch
 
     Returns:
-        Response list containing multiple stock prices
+        Response list containing multiple crypto prices
     """
     try:
         symbol_list = [s.strip() for s in symbols.split(',') if s.strip()]
         
         if not symbol_list:
-            raise HTTPException(status_code=400, detail="Stock symbol list cannot be empty")
+            raise HTTPException(status_code=400, detail="crypto symbol list cannot be empty")
         
         if len(symbol_list) > 20:
-            raise HTTPException(status_code=400, detail="Maximum 20 stock symbols supported")
+            raise HTTPException(status_code=400, detail="Maximum 20 crypto symbols supported")
         
         results = []
         import time
@@ -118,28 +114,28 @@ async def get_multiple_prices(symbols: str, market: str = "US"):
                 ))
             except Exception as e:
                 logger.warning(f"Failed to get {symbol} price: {e}")
-                # Continue processing other stocks without interrupting the entire request
+                # Continue processing other cryptos without interrupting the entire request
                 
         return results
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to batch get stock prices: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to batch get stock prices: {str(e)}")
+        logger.error(f"Failed to batch get crypto prices: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to batch get crypto prices: {str(e)}")
 
 
 @router.get("/kline/{symbol}", response_model=KlineResponse)
-async def get_stock_kline(
+async def get_crypto_kline(
     symbol: str, 
     market: str = "US",
     period: str = "1m",
     count: int = 100
 ):
     """
-    Get stock K-line data
+    Get crypto K-line data
 
     Args:
-        symbol: Stock symbol, such as 'MSFT'
+        symbol: crypto symbol, such as 'MSFT'
         market: Market symbol, default 'US'
         period: Time period, supports '1m', '5m', '15m', '30m', '1h', '1d'
         count: Number of data points, default 100, max 500
@@ -193,12 +189,12 @@ async def get_stock_kline(
 
 
 @router.get("/status/{symbol}", response_model=MarketStatusResponse)
-async def get_stock_market_status(symbol: str, market: str = "US"):
+async def get_crypto_market_status(symbol: str, market: str = "US"):
     """
-    Get stock market status
+    Get crypto market status
 
     Args:
-        symbol: Stock symbol, such as 'MSFT'
+        symbol: crypto symbol, such as 'MSFT'
         market: Market symbol, default 'US'
 
     Returns:

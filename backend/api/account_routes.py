@@ -26,6 +26,205 @@ def get_db():
         db.close()
 
 
+@router.get("/list")
+async def list_all_accounts(db: Session = Depends(get_db)):
+    """Get all active accounts (for paper trading demo)"""
+    try:
+        from database.models import User
+        accounts = db.query(Account).filter(Account.is_active == "true").all()
+        
+        result = []
+        for account in accounts:
+            user = db.query(User).filter(User.id == account.user_id).first()
+            result.append({
+                "id": account.id,
+                "user_id": account.user_id,
+                "username": user.username if user else "unknown",
+                "name": account.name,
+                "account_type": account.account_type,
+                "initial_capital": float(account.initial_capital),
+                "current_cash": float(account.current_cash),
+                "frozen_cash": float(account.frozen_cash),
+                "model": account.model,
+                "base_url": account.base_url,
+                "api_key": account.api_key,
+                "is_active": account.is_active == "true"
+            })
+        
+        return result
+    except Exception as e:
+        logger.error(f"Failed to list accounts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list accounts: {str(e)}")
+
+
+@router.get("/overview")
+async def get_account_overview(db: Session = Depends(get_db)):
+    """Get overview for the default account (for paper trading demo)"""
+    try:
+        # Get the first active account (default account)
+        account = db.query(Account).filter(Account.is_active == "true").first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="No active account found")
+        
+        # Calculate positions value
+        from services.asset_calculator import calc_positions_value
+        positions_value = float(calc_positions_value(db, account.id) or 0.0)
+        
+        # Count positions and pending orders
+        positions_count = db.query(Position).filter(
+            Position.account_id == account.id,
+            Position.quantity > 0
+        ).count()
+        
+        from database.models import Order
+        pending_orders = db.query(Order).filter(
+            Order.account_id == account.id,
+            Order.status == "PENDING"
+        ).count()
+        
+        return {
+            "account": {
+                "id": account.id,
+                "name": account.name,
+                "account_type": account.account_type,
+                "current_cash": float(account.current_cash),
+                "frozen_cash": float(account.frozen_cash),
+            },
+            "portfolio": {
+                "total_assets": positions_value + float(account.current_cash),
+                "positions_value": positions_value,
+                "positions_count": positions_count,
+                "pending_orders": pending_orders,
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get overview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get overview: {str(e)}")
+
+
+@router.post("/")
+async def create_new_account(payload: dict, db: Session = Depends(get_db)):
+    """Create a new account for the default user (for paper trading demo)"""
+    try:
+        from database.models import User
+        
+        # Get the default user (or first user)
+        user = db.query(User).filter(User.username == "default").first()
+        if not user:
+            user = db.query(User).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="No user found")
+        
+        # Validate required fields
+        if "name" not in payload or not payload["name"]:
+            raise HTTPException(status_code=400, detail="Account name is required")
+        
+        # Create new account
+        new_account = Account(
+            user_id=user.id,
+            version="v1",
+            name=payload["name"],
+            account_type=payload.get("account_type", "AI"),
+            model=payload.get("model", "gpt-4-turbo"),
+            base_url=payload.get("base_url", "https://api.openai.com/v1"),
+            api_key=payload.get("api_key", ""),
+            initial_capital=float(payload.get("initial_capital", 10000.0)),
+            current_cash=float(payload.get("initial_capital", 10000.0)),
+            frozen_cash=0.0,
+            is_active="true"
+        )
+        
+        db.add(new_account)
+        db.commit()
+        db.refresh(new_account)
+        
+        return {
+            "id": new_account.id,
+            "user_id": new_account.user_id,
+            "username": user.username,
+            "name": new_account.name,
+            "account_type": new_account.account_type,
+            "initial_capital": float(new_account.initial_capital),
+            "current_cash": float(new_account.current_cash),
+            "frozen_cash": float(new_account.frozen_cash),
+            "model": new_account.model,
+            "base_url": new_account.base_url,
+            "api_key": new_account.api_key,
+            "is_active": new_account.is_active == "true"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create account: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
+
+
+@router.put("/{account_id}")
+async def update_account_settings(account_id: int, payload: dict, db: Session = Depends(get_db)):
+    """Update account settings (for paper trading demo)"""
+    try:
+        logger.info(f"Updating account {account_id} with payload: {payload}")
+        
+        account = db.query(Account).filter(
+            Account.id == account_id,
+            Account.is_active == "true"
+        ).first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Update fields if provided (allow empty strings for api_key and base_url)
+        if "name" in payload:
+            if payload["name"]:
+                account.name = payload["name"]
+                logger.info(f"Updated name to: {payload['name']}")
+            else:
+                raise HTTPException(status_code=400, detail="Account name cannot be empty")
+        
+        if "model" in payload:
+            account.model = payload["model"] if payload["model"] else None
+            logger.info(f"Updated model to: {account.model}")
+        
+        if "base_url" in payload:
+            account.base_url = payload["base_url"]
+            logger.info(f"Updated base_url to: {account.base_url}")
+        
+        if "api_key" in payload:
+            account.api_key = payload["api_key"]
+            logger.info(f"Updated api_key (length: {len(payload['api_key']) if payload['api_key'] else 0})")
+        
+        db.commit()
+        db.refresh(account)
+        logger.info(f"Account {account_id} updated successfully")
+        
+        from database.models import User
+        user = db.query(User).filter(User.id == account.user_id).first()
+        
+        return {
+            "id": account.id,
+            "user_id": account.user_id,
+            "username": user.username if user else "unknown",
+            "name": account.name,
+            "account_type": account.account_type,
+            "initial_capital": float(account.initial_capital),
+            "current_cash": float(account.current_cash),
+            "frozen_cash": float(account.frozen_cash),
+            "model": account.model,
+            "base_url": account.base_url,
+            "api_key": account.api_key,
+            "is_active": account.is_active == "true"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update account: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update account: {str(e)}")
+
+
 @router.get("/asset-curve/timeframe")
 async def get_asset_curve_by_timeframe(
     timeframe: str = "1d",
@@ -50,8 +249,8 @@ async def get_asset_curve_by_timeframe(
         }
         period = timeframe_map[timeframe]
         
-        # Get all accounts
-        accounts = db.query(Account).all()
+        # Get all active accounts
+        accounts = db.query(Account).filter(Account.is_active == "true").all()
         if not accounts:
             return []
         

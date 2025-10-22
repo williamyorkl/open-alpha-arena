@@ -21,7 +21,7 @@ interface TradingPanelProps {
 }
 
 export default function TradingPanel({ onPlace, user, positions = [], lastPrices = {} }: TradingPanelProps) {
-  const [symbol, setSymbol] = useState('AAPL')
+  const [symbol, setSymbol] = useState('BTC')
   const [name] = useState('Apple Inc.')
   const [market] = useState<'US'>('US')
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('LIMIT')

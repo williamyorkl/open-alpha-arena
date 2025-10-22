@@ -26,6 +26,7 @@ import TradingPanel from '@/components/trading/TradingPanel'
 import Portfolio from '@/components/portfolio/Portfolio'
 import AssetCurve from '@/components/portfolio/AssetCurve'
 import ComprehensiveView from '@/components/portfolio/ComprehensiveView'
+import { AIDecision } from '@/lib/api'
 
 interface User {
   id: number
@@ -67,6 +68,7 @@ function App() {
   const [positions, setPositions] = useState<Position[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [trades, setTrades] = useState<Trade[]>([])
+  const [aiDecisions, setAiDecisions] = useState<AIDecision[]>([])
   const [allAssetCurves, setAllAssetCurves] = useState<any[]>([])
   const [currentPage, setCurrentPage] = useState<string>('comprehensive')
   const wsRef = useRef<WebSocket | null>(null)
@@ -81,8 +83,8 @@ function App() {
     wsRef.current = ws!
 
     const handleOpen = () => {
-      // Start with demo as default account
-      ws!.send(JSON.stringify({ type: 'bootstrap', username: 'demo', initial_capital: 10000 }))
+      // Start with hardcoded default user for paper trading
+      ws!.send(JSON.stringify({ type: 'bootstrap', username: 'default', initial_capital: 10000 }))
     }
     const handleMessage = (e: MessageEvent) => {
       const msg = JSON.parse(e.data)
@@ -100,6 +102,7 @@ function App() {
         setPositions(msg.positions)
         setOrders(msg.orders)
         setTrades(msg.trades || [])
+        setAiDecisions(msg.ai_decisions || [])
         setAllAssetCurves(msg.all_asset_curves || [])
       } else if (msg.type === 'trades') {
         setTrades(msg.trades || [])
@@ -111,7 +114,10 @@ function App() {
         ws!.send(JSON.stringify({ type: 'get_snapshot' }))
       } else if (msg.type === 'user_switched') {
         toast.success(`Switched to ${msg.user.username}`)
-        setUserId(msg.user.id)
+        setUser(msg.user)
+      } else if (msg.type === 'account_switched') {
+        toast.success(`Switched to ${msg.account.name}`)
+        setAccount(msg.account)
       } else if (msg.type === 'error') {
         console.error(msg.message)
         toast.error(msg.message || 'Order error')
@@ -165,6 +171,21 @@ function App() {
     }
   }
 
+  const switchAccount = (accountId: number) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('WS not connected, cannot switch account')
+      toast.error('Not connected to server')
+      return
+    }
+    try {
+      wsRef.current.send(JSON.stringify({ type: 'switch_account', account_id: accountId }))
+      toast('Switching account...', { icon: '🔄' })
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to switch account')
+    }
+  }
+
   if (!user || !account || !overview) return <div className="p-8">Connecting to trading server...</div>
 
   const renderMainContent = () => {
@@ -183,8 +204,10 @@ function App() {
               positions={positions}
               orders={orders}
               trades={trades}
+              aiDecisions={aiDecisions}
               allAssetCurves={allAssetCurves}
               onSwitchUser={switchUser}
+              onSwitchAccount={switchAccount}
               onRefreshData={() => {
                 if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                   wsRef.current.send(JSON.stringify({ type: 'get_snapshot' }))
@@ -213,8 +236,9 @@ function App() {
 
               <div className="flex-1 overflow-hidden">
                 <Tabs defaultValue="asset" className="h-full flex flex-col">
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="asset">Asset</TabsTrigger>
+                    <TabsTrigger value="ai-decisions">AI Decisions</TabsTrigger>
                     <TabsTrigger value="positions">Positions</TabsTrigger>
                     <TabsTrigger value="orders">Orders</TabsTrigger>
                     <TabsTrigger value="trades">Trades</TabsTrigger>
@@ -225,6 +249,10 @@ function App() {
                       <div className="p-4 text-muted-foreground text-sm">
                         Asset details shown in the comprehensive view below
                       </div>
+                    </TabsContent>
+
+                    <TabsContent value="ai-decisions" className="h-full overflow-y-auto">
+                      <AIDecisionLogWS aiDecisions={aiDecisions} />
                     </TabsContent>
 
                     <TabsContent value="positions" className="h-full overflow-y-auto">
@@ -367,6 +395,57 @@ function TradeHistoryWS({ trades }: { trades: Trade[] }) {
               <TableCell>{t.price.toFixed(2)}</TableCell>
               <TableCell>{t.quantity}</TableCell>
               <TableCell>{t.commission.toFixed(2)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function AIDecisionLogWS({ aiDecisions }: { aiDecisions: AIDecision[] }) {
+  return (
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Time</TableHead>
+            <TableHead>Operation</TableHead>
+            <TableHead>Symbol</TableHead>
+            <TableHead>Prev %</TableHead>
+            <TableHead>Target %</TableHead>
+            <TableHead>Balance</TableHead>
+            <TableHead>Executed</TableHead>
+            <TableHead>Reason</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {aiDecisions.map(d => (
+            <TableRow key={d.id}>
+              <TableCell>{new Date(d.decision_time).toLocaleString()}</TableCell>
+              <TableCell>
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  d.operation === 'buy' ? 'bg-green-100 text-green-800' :
+                  d.operation === 'sell' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {d.operation.toUpperCase()}
+                </span>
+              </TableCell>
+              <TableCell>{d.symbol || '-'}</TableCell>
+              <TableCell>{(d.prev_portion * 100).toFixed(2)}%</TableCell>
+              <TableCell>{(d.target_portion * 100).toFixed(2)}%</TableCell>
+              <TableCell>${d.total_balance.toFixed(2)}</TableCell>
+              <TableCell>
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  d.executed === 'true' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {d.executed === 'true' ? 'Yes' : 'No'}
+                </span>
+              </TableCell>
+              <TableCell className="max-w-xs truncate" title={d.reason}>
+                {d.reason}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

@@ -8,33 +8,33 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer'
-import StockViewer from './StockViewer'
+import cryptoViewer from './cryptoViewer'
 
-interface StockViewerDrawerProps {
+interface cryptoViewerDrawerProps {
   symbol: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  stockList?: string[]
+  cryptoList?: string[]
   onNavigate?: (direction: 'prev' | 'next') => void
   title?: string
 }
 
-export default function StockViewerDrawer({
+export default function cryptoViewerDrawer({
   symbol,
   open,
   onOpenChange,
-  stockList = [],
+  cryptoList = [],
   onNavigate,
   title
-}: StockViewerDrawerProps) {
+}: cryptoViewerDrawerProps) {
   const [currentIndex, setCurrentIndex] = useState(-1)
 
   useEffect(() => {
-    if (symbol && stockList.length > 0) {
-      const index = stockList.findIndex(s => s === symbol)
+    if (symbol && cryptoList.length > 0) {
+      const index = cryptoList.findIndex(s => s === symbol)
       setCurrentIndex(index)
     }
-  }, [symbol, stockList])
+  }, [symbol, cryptoList])
 
   const handlePrevious = () => {
     if (onNavigate) {
@@ -49,7 +49,7 @@ export default function StockViewerDrawer({
   }
 
   const hasPrevious = currentIndex > 0
-  const hasNext = currentIndex < stockList.length - 1
+  const hasNext = currentIndex < cryptoList.length - 1
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -66,10 +66,10 @@ export default function StockViewerDrawer({
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <DrawerTitle className="text-base">
-              {title || (symbol ? `${symbol}` : 'Stock Viewer')}
-              {stockList.length > 0 && currentIndex >= 0 && (
+              {title || (symbol ? `${symbol}` : 'crypto Viewer')}
+              {cryptoList.length > 0 && currentIndex >= 0 && (
                 <span className="text-sm text-muted-foreground ml-2">
-                  ({currentIndex + 1}/{stockList.length})
+                  ({currentIndex + 1}/{cryptoList.length})
                 </span>
               )}
             </DrawerTitle>
@@ -91,7 +91,7 @@ export default function StockViewerDrawer({
         </DrawerHeader>
         
         <div className="overflow-y-auto flex-1 px-2">
-          <StockViewer symbol={symbol} />
+          <cryptoViewer symbol={symbol} />
         </div>
       </DrawerContent>
     </Drawer>

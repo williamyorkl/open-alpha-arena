@@ -6,14 +6,14 @@ from .market_data import get_last_price
 
 def calc_positions_value(db: Session, account_id: int) -> float:
     """
-    计算持仓总市值
-    
+    Calculate total market value of positions
+
     Args:
-        db: 数据库会话
-        account_id: 账户ID
-        
+        db: Database session
+        account_id: Account ID
+
     Returns:
-        持仓总市值，如果无法获取价格则返回0
+        Total market value of positions, returns 0 if price cannot be obtained
     """
     positions = db.query(Position).filter(Position.account_id == account_id).all()
     total = Decimal("0")
@@ -23,10 +23,10 @@ def calc_positions_value(db: Session, account_id: int) -> float:
             price = Decimal(str(get_last_price(p.symbol, p.market)))
             total += price * Decimal(p.quantity)
         except Exception as e:
-            # 记录错误但不中断计算，当无法获取价格时跳过该持仓
+            # Log error but don't interrupt calculation, skip position if price cannot be obtained
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"无法获取 {p.symbol}.{p.market} 价格，跳过该持仓价值计算: {e}")
+            logger.warning(f"Cannot get price for {p.symbol}.{p.market}, skipping position value calculation: {e}")
             continue
     
     return float(total)

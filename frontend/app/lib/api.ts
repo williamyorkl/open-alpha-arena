@@ -3,6 +3,9 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
   ? '/api' 
   : '/api'  // Use proxy, don't hardcode port
 
+// Hardcoded user for paper trading (matches backend initialization)
+const HARDCODED_USERNAME = 'default'
+
 // Helper function for making API requests
 export async function apiRequest(
   endpoint: string, 
@@ -67,18 +70,69 @@ export async function getPopularCryptos() {
   return response.json()
 }
 
+// AI Decision Log interfaces and functions
+export interface AIDecision {
+  id: number
+  account_id: number
+  decision_time: string
+  reason: string
+  operation: string
+  symbol?: string
+  prev_portion: number
+  target_portion: number
+  total_balance: number
+  executed: string
+  order_id?: number
+}
+
+export interface AIDecisionFilters {
+  operation?: string
+  symbol?: string
+  executed?: boolean
+  start_date?: string
+  end_date?: string
+  limit?: number
+}
+
+export async function getAIDecisions(accountId: number, filters?: AIDecisionFilters): Promise<AIDecision[]> {
+  const params = new URLSearchParams()
+  if (filters?.operation) params.append('operation', filters.operation)
+  if (filters?.symbol) params.append('symbol', filters.symbol)
+  if (filters?.executed !== undefined) params.append('executed', filters.executed.toString())
+  if (filters?.start_date) params.append('start_date', filters.start_date)
+  if (filters?.end_date) params.append('end_date', filters.end_date)
+  if (filters?.limit) params.append('limit', filters.limit.toString())
+  
+  const queryString = params.toString()
+  const endpoint = `/accounts/${accountId}/ai-decisions${queryString ? `?${queryString}` : ''}`
+  
+  const response = await apiRequest(endpoint)
+  return response.json()
+}
+
+export async function getAIDecisionById(accountId: number, decisionId: number): Promise<AIDecision> {
+  const response = await apiRequest(`/accounts/${accountId}/ai-decisions/${decisionId}`)
+  return response.json()
+}
+
+export async function getAIDecisionStats(accountId: number, days?: number): Promise<{
+  total_decisions: number
+  executed_decisions: number
+  execution_rate: number
+  operations: { [key: string]: number }
+  avg_target_portion: number
+}> {
+  const params = days ? `?days=${days}` : ''
+  const response = await apiRequest(`/accounts/${accountId}/ai-decisions/stats${params}`)
+  return response.json()
+}
+
 // User authentication interfaces
 export interface User {
   id: number
   username: string
   email?: string
   is_active: boolean
-}
-
-export interface UserCreate {
-  username: string
-  email?: string
-  password?: string
 }
 
 export interface UserAuthResponse {
@@ -118,14 +172,6 @@ export interface TradingAccountUpdate {
   api_key?: string
 }
 
-// User authentication functions
-export async function registerUser(userData: UserCreate): Promise<User> {
-  const response = await apiRequest('/users/register', {
-    method: 'POST',
-    body: JSON.stringify(userData),
-  })
-  return response.json()
-}
 
 export async function loginUser(username: string, password: string): Promise<UserAuthResponse> {
   const response = await apiRequest('/users/login', {
@@ -168,25 +214,42 @@ export async function deleteTradingAccount(accountId: number, sessionToken: stri
   })
 }
 
-// Demo mode functions (no authentication required)
-export async function initDemoUser(username: string = "demo"): Promise<{user: User, account: TradingAccount}> {
-  const response = await apiRequest(`/demo/init?username=${username}`)
+// Account functions for paper trading with hardcoded user
+// Note: Backend initializes default user on startup, frontend just queries the endpoints
+export async function getAccounts(): Promise<TradingAccount[]> {
+  const response = await apiRequest('/account/list')
   return response.json()
 }
 
-export async function getDemoAccounts(username: string = "demo"): Promise<TradingAccount[]> {
-  const response = await apiRequest(`/demo/accounts?username=${username}`)
+export async function getOverview(): Promise<any> {
+  const response = await apiRequest('/account/overview')
   return response.json()
 }
 
-export async function getDemoOverview(username: string = "demo"): Promise<any> {
-  const response = await apiRequest(`/demo/overview?username=${username}`)
+export async function createAccount(account: TradingAccountCreate): Promise<TradingAccount> {
+  const response = await apiRequest('/account/', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: account.name,
+      model: account.model,
+      base_url: account.base_url,
+      api_key: account.api_key,
+      account_type: account.account_type || 'AI',
+      initial_capital: account.initial_capital || 10000
+    })
+  })
   return response.json()
 }
 
-export async function resetDemoAccount(username: string = "demo"): Promise<any> {
-  const response = await apiRequest(`/demo/reset?username=${username}`, {
-    method: 'POST'
+export async function updateAccount(accountId: number, account: TradingAccountUpdate): Promise<TradingAccount> {
+  const response = await apiRequest(`/account/${accountId}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: account.name,
+      model: account.model,
+      base_url: account.base_url,
+      api_key: account.api_key
+    })
   })
   return response.json()
 }
@@ -195,17 +258,17 @@ export async function resetDemoAccount(username: string = "demo"): Promise<any> 
 export type AIAccount = TradingAccount
 export type AIAccountCreate = TradingAccountCreate
 
-// Updated legacy functions to use demo mode for simulation
-export const listAIAccounts = () => getDemoAccounts("demo")
+// Updated legacy functions to use default mode for simulation
+export const listAIAccounts = () => getAccounts()
 export const createAIAccount = (account: any) => {
-  console.warn("createAIAccount is deprecated. Use demo mode or new trading account APIs.")
+  console.warn("createAIAccount is deprecated. Use default mode or new trading account APIs.")
   return Promise.resolve({} as TradingAccount)
 }
 export const updateAIAccount = (id: number, account: any) => {
-  console.warn("updateAIAccount is deprecated. Use demo mode or new trading account APIs.")
+  console.warn("updateAIAccount is deprecated. Use default mode or new trading account APIs.")
   return Promise.resolve({} as TradingAccount)
 }
 export const deleteAIAccount = (id: number) => {
-  console.warn("deleteAIAccount is deprecated. Use demo mode or new trading account APIs.")
+  console.warn("deleteAIAccount is deprecated. Use default mode or new trading account APIs.")
   return Promise.resolve()
 }
