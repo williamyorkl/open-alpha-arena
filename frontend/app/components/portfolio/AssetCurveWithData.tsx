@@ -13,7 +13,6 @@ import {
 } from 'chart.js'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { apiRequest } from '@/lib/api'
 
 // 注册Chart.js组件
 ChartJS.register(
@@ -40,39 +39,58 @@ interface AssetCurveData {
 
 interface AssetCurveProps {
   data?: AssetCurveData[]
+  wsRef?: React.MutableRefObject<WebSocket | null>
 }
 
 type Timeframe = '5m' | '1h' | '1d'
 
-export default function AssetCurve({ data: initialData }: AssetCurveProps) {
-  const [timeframe, setTimeframe] = useState<Timeframe>('5m')
+export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps) {
+  const [timeframe, setTimeframe] = useState<Timeframe>('1h')
   const [data, setData] = useState<AssetCurveData[]>(initialData || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch data based on timeframe
+  // Listen for WebSocket asset curve updates
   useEffect(() => {
-    const fetchTimeframeData = async () => {
-      setLoading(true)
-      setError(null)
+    if (!wsRef?.current) return
+
+    const handleMessage = (event: MessageEvent) => {
       try {
-        const response = await apiRequest(`/account/asset-curve/timeframe?timeframe=${timeframe}`)
-        const result = await response.json()
-        setData(result)
-      } catch (err) {
-        console.error('Failed to fetch asset curve data:', err)
-        setError('Failed to load data')
-        // Fallback to initial data if available
-        if (initialData) {
-          setData(initialData)
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'asset_curve_data' && msg.timeframe === timeframe) {
+          setData(msg.data || [])
+          setLoading(false)
+          setError(null)
+        } else if (msg.type === 'asset_curve_update' && msg.timeframe === timeframe) {
+          // Real-time update for current timeframe
+          setData(msg.data || [])
         }
-      } finally {
-        setLoading(false)
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err)
       }
     }
 
-    fetchTimeframeData()
-  }, [timeframe, initialData])
+    wsRef.current.addEventListener('message', handleMessage)
+    
+    return () => {
+      wsRef.current?.removeEventListener('message', handleMessage)
+    }
+  }, [wsRef, timeframe])
+
+  // Request data when timeframe changes
+  useEffect(() => {
+    if (wsRef?.current && wsRef.current.readyState === WebSocket.OPEN) {
+      setLoading(true)
+      setError(null)
+      wsRef.current.send(JSON.stringify({
+        type: 'get_asset_curve',
+        timeframe: timeframe
+      }))
+    } else if (initialData && timeframe === '1h') {
+      // Fallback to initial data for 1h timeframe (default in snapshots)
+      setData(initialData)
+    }
+  }, [timeframe, wsRef, initialData])
 
   const handleTimeframeChange = (value: string) => {
     setTimeframe(value as Timeframe)

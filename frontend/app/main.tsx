@@ -206,6 +206,7 @@ function App() {
               trades={trades}
               aiDecisions={aiDecisions}
               allAssetCurves={allAssetCurves}
+              wsRef={wsRef}
               onSwitchUser={switchUser}
               onSwitchAccount={switchAccount}
               onRefreshData={() => {

@@ -48,127 +48,182 @@ class ConnectionManager:
                 # remove broken connection
                 self.active_connections[account_id].discard(ws)
 
+    async def broadcast_to_all(self, message: dict):
+        """Broadcast message to all connected clients"""
+        payload = json.dumps(message, ensure_ascii=False)
+        for account_id, websockets in list(self.active_connections.items()):
+            for ws in list(websockets):
+                try:
+                    await ws.send_text(payload)
+                except Exception:
+                    # remove broken connection
+                    websockets.discard(ws)
+
 
 manager = ConnectionManager()
 
 
-def get_all_asset_curves_data(db: Session):
-    """Get asset curve data for all accounts - WebSocket version"""
+async def broadcast_asset_curve_update(timeframe: str = "1h"):
+    """Broadcast asset curve updates to all connected clients"""
+    db = SessionLocal()
     try:
-        # Get all accounts
-        accounts = db.query(Account).all()
+        asset_curves = get_all_asset_curves_data(db, timeframe)
+        await manager.broadcast_to_all({
+            "type": "asset_curve_update",
+            "timeframe": timeframe,
+            "data": asset_curves
+        })
+    except Exception as e:
+        logging.error(f"Failed to broadcast asset curve update: {e}")
+    finally:
+        db.close()
+
+
+def get_all_asset_curves_data(db: Session, timeframe: str = "1h"):
+    """Get timeframe-based asset curve data for all accounts - WebSocket version
+    
+    Args:
+        timeframe: Time period for the curve, options: "5m", "1h", "1d"
+    """
+    try:
+        # Get all active accounts
+        accounts = db.query(Account).filter(Account.is_active == "true").all()
         if not accounts:
             return []
-
-        all_curve_data = []
-
-        for account in accounts:
+        
+        # Get all unique symbols from all account positions and trades
+        symbols_query = db.query(Trade.symbol, Trade.market).distinct().all()
+        unique_symbols = set()
+        for symbol, market in symbols_query:
+            unique_symbols.add((symbol, market))
+        
+        if not unique_symbols:
+            # No trades yet, return initial capital for all accounts
+            now = datetime.now()
+            return [{
+                "timestamp": int(now.timestamp()),
+                "datetime_str": now.isoformat(),
+                "user_id": account.user_id,
+                "username": account.name,
+                "total_assets": float(account.initial_capital),
+                "cash": float(account.current_cash),
+                "positions_value": 0.0,
+            } for account in accounts]
+        
+        # Fetch kline data for all symbols (20 points)
+        from services.market_data import get_kline_data
+        
+        symbol_klines = {}
+        for symbol, market in unique_symbols:
             try:
-                # Get first trade time
-                first_trade = db.query(Trade).filter(Trade.account_id == account.id).order_by(Trade.trade_time.asc()).first()
-
-                if not first_trade:
-                    # If no trading records, return initial capital point
-                    all_curve_data.append({
-                        "date": datetime.now().date().isoformat(),
-                        "total_assets": float(account.initial_capital),
-                        "cash": float(account.current_cash),
-                        "positions_value": 0.0,
-                        "is_initial": True,
-                        "user_id": account.user_id,
-                        "username": account.name
-                    })
-                    continue
-
-                # First point: day before first trade, value is initial capital
-                first_trade_date = first_trade.trade_time.date()
-                start_date = first_trade_date - timedelta(days=1)
-
-                # Add starting point
-                all_curve_data.append({
-                    "date": start_date.isoformat(),
-                    "total_assets": float(account.initial_capital),
-                    "cash": float(account.initial_capital),
-                    "positions_value": 0.0,
-                    "is_initial": True,
-                    "user_id": account.user_id,
-                    "username": account.name
-                })
-
-                # Get all trading dates (dates with trades)
-                trade_dates = db.query(func.date(Trade.trade_time).label('trade_date')).filter(
-                    Trade.account_id == account.id
-                ).distinct().order_by('trade_date').all()
-
-                # Get all dates with price data
-                price_dates = db.query(CryptoPrice.price_date).distinct().order_by(CryptoPrice.price_date).all()
-
-                # Merge and deduplicate all relevant dates
-                all_dates = set()
-                for td in trade_dates:
-                    # Handle different types of date objects
-                    if hasattr(td, 'trade_date'):
-                        trade_date = td.trade_date
-                    else:
-                        trade_date = td[0]  # When using label, the result is a tuple
-
-                    if isinstance(trade_date, str):
-                        trade_date = datetime.strptime(trade_date, '%Y-%m-%d').date()
-                    elif hasattr(trade_date, 'date'):
-                        trade_date = trade_date.date()
-
-                    all_dates.add(trade_date)
-
-                for pd in price_dates:
-                    # Process price dates
-                    if hasattr(pd, 'price_date'):
-                        price_date = pd.price_date
-                    else:
-                        price_date = pd[0]
-
-                    if isinstance(price_date, str):
-                        price_date = datetime.strptime(price_date, '%Y-%m-%d').date()
-                    elif hasattr(price_date, 'date'):
-                        price_date = price_date.date()
-
-                    all_dates.add(price_date)
-
-
-                relevant_dates = sorted([d for d in all_dates if d >= first_trade_date])
-
-                for target_date in relevant_dates:
-                    try:
-                        # Calculate cash changes up to the target date
-                        cash_changes = _calculate_cash_changes_up_to_date(db, account.id, target_date)
-                        current_cash = float(account.initial_capital) + cash_changes
-
-                        # Calculate position value on the target date
-                        positions_value = _calculate_positions_value_on_date(db, account.id, target_date)
-
-                        total_assets = current_cash + positions_value
-
-                        all_curve_data.append({
-                            "date": target_date.isoformat(),
-                            "total_assets": total_assets,
-                            "cash": current_cash,
-                            "positions_value": positions_value,
-                            "is_initial": False,
-                            "user_id": account.user_id,
-                            "username": account.name
-                        })
-
-                    except Exception as e:
-                        logging.warning(f"Failed to calculate assets for account {account.id} on date {target_date}: {e}")
-                        continue
-
+                klines = get_kline_data(symbol, market, timeframe, 20)
+                if klines:
+                    symbol_klines[(symbol, market)] = klines
+                    logging.info(f"Fetched {len(klines)} klines for {symbol}.{market}")
             except Exception as e:
-                logging.warning(f"Failed to process asset curve for account {account.id}: {e}")
+                logging.warning(f"Failed to fetch klines for {symbol}.{market}: {e}")
+        
+        if not symbol_klines:
+            # Fallback to current time if no market data available
+            now = datetime.now()
+            return [{
+                "timestamp": int(now.timestamp()),
+                "datetime_str": now.isoformat(),
+                "user_id": account.user_id,
+                "username": account.name,
+                "total_assets": float(account.initial_capital),
+                "cash": float(account.current_cash),
+                "positions_value": 0.0,
+            } for account in accounts]
+        
+        # Get timestamps from the first symbol's klines
+        first_klines = next(iter(symbol_klines.values()))
+        timestamps = [k['timestamp'] for k in first_klines]
+        
+        # Calculate asset value for each account at each timestamp
+        result = []
+        for account in accounts:
+            account_id = account.id
+            
+            # Get all trades for this account
+            trades = db.query(Trade).filter(
+                Trade.account_id == account_id
+            ).order_by(Trade.trade_time.asc()).all()
+            
+            if not trades:
+                # No trades, return initial capital at all timestamps
+                for i, ts in enumerate(timestamps):
+                    result.append({
+                        "timestamp": ts,
+                        "datetime_str": first_klines[i]['datetime_str'],
+                        "user_id": account.user_id,
+                        "username": account.name,
+                        "total_assets": float(account.initial_capital),
+                        "cash": float(account.initial_capital),
+                        "positions_value": 0.0,
+                    })
                 continue
-
-        return all_curve_data
-
+            
+            # Calculate holdings and cash at each timestamp
+            for i, ts in enumerate(timestamps):
+                from datetime import timezone
+                ts_datetime = datetime.fromtimestamp(ts, tz=timezone.utc)
+                
+                # Calculate cash changes up to this timestamp
+                cash_change = 0.0
+                position_quantities = {}
+                
+                for trade in trades:
+                    trade_time = trade.trade_time
+                    if not trade_time.tzinfo:
+                        trade_time = trade_time.replace(tzinfo=timezone.utc)
+                    
+                    if trade_time <= ts_datetime:
+                        # Update cash
+                        trade_amount = float(trade.price) * float(trade.quantity) + float(trade.commission)
+                        if trade.side == "BUY":
+                            cash_change -= trade_amount
+                        else:  # SELL
+                            cash_change += trade_amount
+                        
+                        # Update position
+                        key = (trade.symbol, trade.market)
+                        if key not in position_quantities:
+                            position_quantities[key] = 0.0
+                        
+                        if trade.side == "BUY":
+                            position_quantities[key] += float(trade.quantity)
+                        else:  # SELL
+                            position_quantities[key] -= float(trade.quantity)
+                
+                current_cash = float(account.initial_capital) + cash_change
+                
+                # Calculate positions value using prices at this timestamp
+                positions_value = 0.0
+                for (symbol, market), quantity in position_quantities.items():
+                    if quantity > 0 and (symbol, market) in symbol_klines:
+                        klines = symbol_klines[(symbol, market)]
+                        if i < len(klines):
+                            price = klines[i]['close']
+                            if price:
+                                positions_value += float(price) * quantity
+                
+                total_assets = current_cash + positions_value
+                
+                result.append({
+                    "timestamp": ts,
+                    "datetime_str": first_klines[i]['datetime_str'],
+                    "user_id": account.user_id,
+                    "username": account.name,
+                    "total_assets": total_assets,
+                    "cash": current_cash,
+                    "positions_value": positions_value,
+                })
+        
+        return result
+        
     except Exception as e:
-        logging.error(f"Failed to get asset curves for all users: {e}")
+        logging.error(f"Failed to get timeframe asset curves: {e}")
         return []
 
 
@@ -348,15 +403,14 @@ async def _send_snapshot(db: Session, account_id: int):
                 "prev_portion": float(d.prev_portion),
                 "target_portion": float(d.target_portion),
                 "total_balance": float(d.total_balance),
-                "executed": d.executed,
+                "executed": str(d.executed).lower() if d.executed else "false",
                 "order_id": d.order_id,
             }
             for d in ai_decisions
         ],
-        "all_asset_curves": get_all_asset_curves_data(db),  # 添加所有账户的资产曲线数据
+        "all_asset_curves": get_all_asset_curves_data(db, "1h"),
     }
 
-    # 如果有价格获取错误，添加警告信息
     if price_error_message:
         response_data["warning"] = {
             "type": "market_data_error",
@@ -472,6 +526,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif kind == "get_snapshot":
                     if account_id is not None:
                         await _send_snapshot(db, account_id)
+                elif kind == "get_asset_curve":
+                    # Get asset curve data with specific timeframe
+                    timeframe = msg.get("timeframe", "1h")
+                    if timeframe not in ["5m", "1h", "1d"]:
+                        await websocket.send_text(json.dumps({"type": "error", "message": "Invalid timeframe. Must be 5m, 1h, or 1d"}))
+                        continue
+                    
+                    asset_curves = get_all_asset_curves_data(db, timeframe)
+                    await websocket.send_text(json.dumps({
+                        "type": "asset_curve_data",
+                        "timeframe": timeframe,
+                        "data": asset_curves
+                    }))
                 elif kind == "place_order":
                     if account_id is None:
                         await websocket.send_text(json.dumps({"type": "error", "message": "not authenticated"}))

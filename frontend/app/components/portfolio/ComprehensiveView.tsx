@@ -72,6 +72,7 @@ interface ComprehensiveViewProps {
   trades: Trade[]
   aiDecisions: AIDecision[]
   allAssetCurves: any[]
+  wsRef?: React.MutableRefObject<WebSocket | null>
   onSwitchUser: (username: string) => void
   onSwitchAccount: (accountId: number) => void
   onRefreshData: () => void
@@ -84,6 +85,7 @@ export default function ComprehensiveView({
   trades,
   aiDecisions,
   allAssetCurves,
+  wsRef,
   onSwitchUser,
   onSwitchAccount,
   onRefreshData
@@ -131,7 +133,7 @@ export default function ComprehensiveView({
       <div className="grid grid-cols-5 gap-6 overflow-hidden">
         {/* Left Side - Asset Curve */}
         <div className="col-span-3">
-          <AssetCurveWithData data={allAssetCurves} />
+          <AssetCurveWithData data={allAssetCurves} wsRef={wsRef} />
         </div>
 
         {/* Right Side - Portfolio Tabs */}

@@ -23,7 +23,7 @@ def _calc_commission(notional: Decimal) -> Decimal:
 
 
 def create_order(db: Session, account: Account, symbol: str, name: str, market: str, 
-                side: str, order_type: str, price: Optional[float], quantity: int) -> Order:
+                side: str, order_type: str, price: Optional[float], quantity: float) -> Order:
     """
     Create limit order
 
@@ -52,8 +52,9 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
     # if quantity % CRYPTO_LOT_SIZE != 0:
     #     raise ValueError(f"Order quantity must be integer multiple of {CRYPTO_LOT_SIZE}")
 
-    if quantity < CRYPTO_MIN_ORDER_QUANTITY:
-        raise ValueError(f"Order quantity must be >= {CRYPTO_MIN_ORDER_QUANTITY}")
+    # For crypto, allow very small quantities (minimum $1 worth)
+    if quantity <= 0:
+        raise ValueError(f"Order quantity must be > 0")
 
     if order_type == "LIMIT" and (price is None or price <= 0):
         raise ValueError("Limit order must specify valid order price")
@@ -89,9 +90,9 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
             .first()
         )
 
-        if not position or int(position.available_quantity) < quantity:
-            available_qty = int(position.available_quantity) if position else 0
-            raise ValueError(f"Insufficient positions. Need {quantity} shares, available {available_qty} shares")
+        if not position or float(position.available_quantity) < quantity:
+            available_qty = float(position.available_quantity) if position else 0
+            raise ValueError(f"Insufficient positions. Need {quantity} {symbol}, available {available_qty} {symbol}")
     
     # Create order
     order = Order(
