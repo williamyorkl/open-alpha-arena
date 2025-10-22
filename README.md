@@ -1,6 +1,6 @@
 # Open Alpha Arena
 
-<img width="2866" height="1526" alt="image" src="https://github.com/user-attachments/assets/b2bf90bb-0fd2-4c24-8e0d-cb26579fac55" />
+<img width="3840" height="1566" alt="image" src="https://github.com/user-attachments/assets/96e5bf5c-6acb-48cf-8d02-1b46f19b8abd" />
 
 <img width="2882" height="1792" alt="image" src="https://github.com/user-attachments/assets/66a5283b-3761-4992-82d1-8cd01f4d518d" />
 
