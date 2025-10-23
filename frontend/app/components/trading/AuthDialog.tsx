@@ -17,7 +17,6 @@ interface AuthDialogProps {
   onAuthenticate: (sessionToken: string, orderData: any) => void
   orderData: {
     symbol: string
-    name: string
     market: string
     side: 'BUY' | 'SELL'
     order_type: 'MARKET' | 'LIMIT'

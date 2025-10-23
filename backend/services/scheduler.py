@@ -8,7 +8,6 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, Set, Callable, Optional
-import asyncio
 import logging
 from datetime import date
 
@@ -69,7 +68,9 @@ class TaskScheduler:
             args=[account_id],
             id=job_id,
             replace_existing=True,
-            max_instances=1  # Avoid duplicate execution
+            max_instances=1,  # Avoid duplicate execution
+            coalesce=True,    # Combine missed executions into one
+            misfire_grace_time=5  # Allow 5 seconds grace time for late execution
         )
         
         logger.info(f"Added snapshot task for account {account_id}, interval {interval_seconds} seconds")
@@ -154,9 +155,10 @@ class TaskScheduler:
         Args:
             account_id: Account ID
         """
+        start_time = datetime.now()
         try:
             # Dynamic import to avoid circular dependency
-            from api.ws import manager, _send_snapshot
+            from api.ws import manager, _send_snapshot_optimized
 
             # Check if account still has active connections
             if account_id not in manager.active_connections:
@@ -164,20 +166,25 @@ class TaskScheduler:
                 self.remove_account_snapshot_task(account_id)
                 return
 
-            # Execute snapshot update
+            # Execute optimized snapshot update
             db: Session = SessionLocal()
             try:
-                # Send snapshot update
-                await _send_snapshot(db, account_id)
+                # Send optimized snapshot update (reduced frequency for expensive data)
+                await _send_snapshot_optimized(db, account_id)
 
-                # Save latest prices for account's positions
-                await self._save_position_prices(db, account_id)
+                # Save latest prices for account's positions (less frequently)
+                if start_time.second % 30 == 0:  # Only every 30 seconds
+                    await self._save_position_prices(db, account_id)
 
             finally:
                 db.close()
 
         except Exception as e:
             logger.error(f"Account {account_id} snapshot update failed: {e}")
+        finally:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            if execution_time > 5:  # Log if execution takes longer than 5 seconds
+                logger.warning(f"Slow snapshot execution for account {account_id}: {execution_time:.2f}s")
     
     async def _save_position_prices(self, db: Session, account_id: int):
         """

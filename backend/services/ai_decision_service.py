@@ -121,7 +121,7 @@ Rules:
                 }
             ],
             "temperature": 0.7,
-            "max_tokens": 500
+            "max_tokens": 1000
         }
         
         # Construct API endpoint URL
@@ -171,8 +171,17 @@ Rules:
         
         # Extract text from OpenAI-compatible response format
         if "choices" in result and len(result["choices"]) > 0:
-            message = result["choices"][0].get("message", {})
-            text_content = message.get("content", "")
+            choice = result["choices"][0]
+            message = choice.get("message", {})
+            finish_reason = choice.get("finish_reason", "")
+            
+            # Check if response was truncated due to length limit
+            if finish_reason == "length":
+                logger.warning(f"AI response was truncated due to token limit. Consider increasing max_tokens.")
+                # Try to get content from reasoning field if available (some models put partial content there)
+                text_content = message.get("reasoning", "") or message.get("content", "")
+            else:
+                text_content = message.get("content", "")
             
             if not text_content:
                 logger.error(f"Empty content in AI response: {result}")
@@ -186,7 +195,57 @@ Rules:
             elif "```" in text_content:
                 text_content = text_content.split("```")[1].split("```")[0].strip()
             
-            decision = json.loads(text_content)
+            # Handle potential JSON parsing issues with escape sequences
+            try:
+                decision = json.loads(text_content)
+            except json.JSONDecodeError as parse_err:
+                # Try to fix common JSON issues
+                logger.warning(f"Initial JSON parse failed: {parse_err}")
+                logger.warning(f"Problematic content: {text_content[:200]}...")
+                
+                # Try to clean up the text content
+                cleaned_content = text_content
+                
+                # Replace problematic characters that might break JSON
+                cleaned_content = cleaned_content.replace('\n', ' ')
+                cleaned_content = cleaned_content.replace('\r', ' ')
+                cleaned_content = cleaned_content.replace('\t', ' ')
+                
+                # Handle unescaped quotes in strings by escaping them
+                import re
+                # Try a simpler approach to fix common JSON issues
+                # Replace smart quotes and em-dashes with regular equivalents
+                cleaned_content = cleaned_content.replace('"', '"').replace('"', '"')
+                cleaned_content = cleaned_content.replace(''', "'").replace(''', "'")
+                cleaned_content = cleaned_content.replace('–', '-').replace('—', '-')
+                cleaned_content = cleaned_content.replace('‑', '-')  # Non-breaking hyphen
+                
+                # Try parsing again
+                try:
+                    decision = json.loads(cleaned_content)
+                    logger.info("Successfully parsed JSON after cleanup")
+                except json.JSONDecodeError:
+                    # If still failing, try to extract just the essential parts
+                    logger.error("JSON parsing failed even after cleanup, attempting manual extraction")
+                    try:
+                        # Extract operation, symbol, and target_portion manually
+                        operation_match = re.search(r'"operation":\s*"([^"]+)"', text_content)
+                        symbol_match = re.search(r'"symbol":\s*"([^"]+)"', text_content)
+                        portion_match = re.search(r'"target_portion_of_balance":\s*([0-9.]+)', text_content)
+                        reason_match = re.search(r'"reason":\s*"([^"]*)', text_content)
+                        
+                        if operation_match and symbol_match and portion_match:
+                            decision = {
+                                "operation": operation_match.group(1),
+                                "symbol": symbol_match.group(1),
+                                "target_portion_of_balance": float(portion_match.group(1)),
+                                "reason": reason_match.group(1) if reason_match else "AI response parsing issue"
+                            }
+                            logger.info("Successfully extracted AI decision manually")
+                        else:
+                            raise json.JSONDecodeError("Could not extract required fields", text_content, 0)
+                    except Exception:
+                        raise parse_err  # Re-raise original error
             
             # Validate that decision is a dict with required structure
             if not isinstance(decision, dict):

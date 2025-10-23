@@ -29,6 +29,15 @@ def initialize_services():
         schedule_auto_trading(interval_seconds=300)
         logger.info("Automatic cryptocurrency trading task started (5-minute interval)")
         
+        # Add price cache cleanup task (every 2 minutes)
+        from services.price_cache import clear_expired_prices
+        task_scheduler.add_interval_task(
+            task_func=clear_expired_prices,
+            interval_seconds=120,  # Clean every 2 minutes
+            task_id="price_cache_cleanup"
+        )
+        logger.info("Price cache cleanup task started (2-minute interval)")
+        
         logger.info("All services initialized successfully")
         
     except Exception as e:

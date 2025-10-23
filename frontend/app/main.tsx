@@ -75,70 +75,113 @@ function App() {
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
+    let reconnectTimer: NodeJS.Timeout | null = null
     let ws = __WS_SINGLETON__
     const created = !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED
-    if (created) {
-      ws = new WebSocket(resolveWsUrl())
-      __WS_SINGLETON__ = ws
-    }
-    wsRef.current = ws!
+    
+    const connectWebSocket = () => {
+      try {
+        ws = new WebSocket(resolveWsUrl())
+        __WS_SINGLETON__ = ws
+        wsRef.current = ws
+        
+        const handleOpen = () => {
+          console.log('WebSocket connected')
+          // Start with hardcoded default user for paper trading
+          ws!.send(JSON.stringify({ type: 'bootstrap', username: 'default', initial_capital: 10000 }))
+        }
+        
+        const handleMessage = (e: MessageEvent) => {
+          try {
+            const msg = JSON.parse(e.data)
+            if (msg.type === 'bootstrap_ok') {
+              if (msg.user) {
+                setUser(msg.user)
+              }
+              if (msg.account) {
+                setAccount(msg.account)
+              }
+              // request initial snapshot
+              ws!.send(JSON.stringify({ type: 'get_snapshot' }))
+            } else if (msg.type === 'snapshot') {
+              setOverview(msg.overview)
+              setPositions(msg.positions)
+              setOrders(msg.orders)
+              setTrades(msg.trades || [])
+              setAiDecisions(msg.ai_decisions || [])
+              setAllAssetCurves(msg.all_asset_curves || [])
+            } else if (msg.type === 'trades') {
+              setTrades(msg.trades || [])
+            } else if (msg.type === 'order_filled') {
+              toast.success('Order filled')
+              ws!.send(JSON.stringify({ type: 'get_snapshot' }))
+            } else if (msg.type === 'order_pending') {
+              toast('Order placed, waiting for fill', { icon: '⏳' })
+              ws!.send(JSON.stringify({ type: 'get_snapshot' }))
+            } else if (msg.type === 'user_switched') {
+              toast.success(`Switched to ${msg.user.username}`)
+              setUser(msg.user)
+            } else if (msg.type === 'account_switched') {
+              toast.success(`Switched to ${msg.account.name}`)
+              setAccount(msg.account)
+            } else if (msg.type === 'error') {
+              console.error(msg.message)
+              toast.error(msg.message || 'Order error')
+            }
+          } catch (err) {
+            console.error('Failed to parse WebSocket message:', err)
+          }
+        }
+        
+        const handleClose = (event: CloseEvent) => {
+          console.log('WebSocket closed:', event.code, event.reason)
+          __WS_SINGLETON__ = null
+          if (wsRef.current === ws) wsRef.current = null
+          
+          // Attempt to reconnect after 3 seconds if the close wasn't intentional
+          if (event.code !== 1000 && event.code !== 1001) {
+            reconnectTimer = setTimeout(() => {
+              console.log('Attempting to reconnect WebSocket...')
+              connectWebSocket()
+            }, 3000)
+          }
+        }
+        
+        const handleError = (event: Event) => {
+          console.error('WebSocket error:', event)
+          // Don't show toast for every error to avoid spam
+          // toast.error('Connection error')
+        }
 
-    const handleOpen = () => {
-      // Start with hardcoded default user for paper trading
-      ws!.send(JSON.stringify({ type: 'bootstrap', username: 'default', initial_capital: 10000 }))
-    }
-    const handleMessage = (e: MessageEvent) => {
-      const msg = JSON.parse(e.data)
-      if (msg.type === 'bootstrap_ok') {
-        if (msg.user) {
-          setUser(msg.user)
+        ws.addEventListener('open', handleOpen)
+        ws.addEventListener('message', handleMessage)
+        ws.addEventListener('close', handleClose)
+        ws.addEventListener('error', handleError)
+        
+        return () => {
+          ws?.removeEventListener('open', handleOpen)
+          ws?.removeEventListener('message', handleMessage)
+          ws?.removeEventListener('close', handleClose)
+          ws?.removeEventListener('error', handleError)
         }
-        if (msg.account) {
-          setAccount(msg.account)
-        }
-        // request initial snapshot
-        ws!.send(JSON.stringify({ type: 'get_snapshot' }))
-      } else if (msg.type === 'snapshot') {
-        setOverview(msg.overview)
-        setPositions(msg.positions)
-        setOrders(msg.orders)
-        setTrades(msg.trades || [])
-        setAiDecisions(msg.ai_decisions || [])
-        setAllAssetCurves(msg.all_asset_curves || [])
-      } else if (msg.type === 'trades') {
-        setTrades(msg.trades || [])
-      } else if (msg.type === 'order_filled') {
-        toast.success('Order filled')
-        ws!.send(JSON.stringify({ type: 'get_snapshot' }))
-      } else if (msg.type === 'order_pending') {
-        toast('Order placed, waiting for fill', { icon: '⏳' })
-        ws!.send(JSON.stringify({ type: 'get_snapshot' }))
-      } else if (msg.type === 'user_switched') {
-        toast.success(`Switched to ${msg.user.username}`)
-        setUser(msg.user)
-      } else if (msg.type === 'account_switched') {
-        toast.success(`Switched to ${msg.account.name}`)
-        setAccount(msg.account)
-      } else if (msg.type === 'error') {
-        console.error(msg.message)
-        toast.error(msg.message || 'Order error')
+      } catch (err) {
+        console.error('Failed to create WebSocket:', err)
+        // Retry connection after 5 seconds
+        reconnectTimer = setTimeout(connectWebSocket, 5000)
       }
     }
-    const handleClose = () => {
-      // When server closes, clear singleton so a new connection can be created later
-      __WS_SINGLETON__ = null
-      if (wsRef.current === ws) wsRef.current = null
+    
+    if (created) {
+      connectWebSocket()
+    } else {
+      wsRef.current = ws
     }
 
-    ws!.addEventListener('open', handleOpen)
-    ws!.addEventListener('message', handleMessage)
-    ws!.addEventListener('close', handleClose)
-
     return () => {
-      // Detach listeners but do not close the socket to avoid duplicate connect/disconnect in StrictMode
-      ws!.removeEventListener('open', handleOpen)
-      ws!.removeEventListener('message', handleMessage)
-      ws!.removeEventListener('close', handleClose)
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+      // Don't close the socket in cleanup to avoid issues with React StrictMode
     }
   }, [])
 

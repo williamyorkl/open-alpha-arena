@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
   getAccounts as getAccounts,
   createAccount as createAccount,
   updateAccount as updateAccount,
+  testLLMConnection,
   type TradingAccount,
   type TradingAccountCreate,
   type TradingAccountUpdate
@@ -42,6 +44,8 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
   const [newAccount, setNewAccount] = useState<AIAccountCreate>({
     name: '',
     model: '',
@@ -62,6 +66,7 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
       setAccounts(data)
     } catch (error) {
       console.error('Failed to load accounts:', error)
+      toast.error('Failed to load accounts')
     } finally {
       setLoading(false)
     }
@@ -71,6 +76,7 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
     if (open) {
       loadAccounts()
       setError(null)
+      setTestResult(null)
       setShowAddForm(false)
       setEditingId(null)
     }
@@ -93,11 +99,15 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
       setShowAddForm(false)
       await loadAccounts()
       
+      toast.success('Account created successfully!')
+      
       // Notify parent component that account was created
       onAccountUpdated?.()
     } catch (error) {
       console.error('Failed to create account:', error)
-      setError(error instanceof Error ? error.message : 'Failed to create account')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create account'
+      setError(errorMessage)
+      toast.error(`Failed to create account: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -107,27 +117,70 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
     if (!editingId) return
     try {
       setLoading(true)
+      setTesting(true)
       setError(null)
+      setTestResult(null)
       
       if (!editAccount.name || !editAccount.name.trim()) {
         setError('Account name is required')
         setLoading(false)
+        setTesting(false)
         return
       }
+      
+      // Test LLM connection first if AI model data is provided
+      if (editAccount.model || editAccount.base_url || editAccount.api_key) {
+        setTestResult('Testing LLM connection...')
+        
+        try {
+          const testResponse = await testLLMConnection({
+            model: editAccount.model,
+            base_url: editAccount.base_url,
+            api_key: editAccount.api_key
+          })
+          
+          if (!testResponse.success) {
+            setError(`LLM Test Failed: ${testResponse.message}`)
+            setTestResult(`❌ Test failed: ${testResponse.message}`)
+            setLoading(false)
+            setTesting(false)
+            return
+          }
+          
+          setTestResult('✅ LLM connection test passed!')
+        } catch (testError) {
+          const errorMessage = testError instanceof Error ? testError.message : 'LLM connection test failed'
+          setError(`LLM Test Failed: ${errorMessage}`)
+          setTestResult(`❌ Test failed: ${errorMessage}`)
+          setLoading(false)
+          setTesting(false)
+          return
+        }
+      }
+      
+      setTesting(false)
+      setTestResult('✅ Test passed! Saving account...')
       
       console.log('Updating account with data:', editAccount)
       await updateAccount(editingId, editAccount)
       setEditingId(null)
       setEditAccount({ name: '', model: '', base_url: '', api_key: '' })
+      setTestResult(null)
       await loadAccounts()
+      
+      toast.success('Account updated successfully!')
       
       // Notify parent component that account was updated
       onAccountUpdated?.()
     } catch (error) {
       console.error('Failed to update account:', error)
-      setError(error instanceof Error ? error.message : 'Failed to update account')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update account'
+      setError(errorMessage)
+      setTestResult(null)
+      toast.error(`Failed to update account: ${errorMessage}`)
     } finally {
       setLoading(false)
+      setTesting(false)
     }
   }
 
@@ -144,6 +197,8 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
   const cancelEdit = () => {
     setEditingId(null)
     setEditAccount({ name: '', model: '', base_url: '', api_key: 'default-key-please-update-in-settings' })
+    setTestResult(null)
+    setError(null)
   }
 
   return (
@@ -208,11 +263,20 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
                           value={editAccount.api_key || ''}
                           onChange={(e) => setEditAccount({ ...editAccount, api_key: e.target.value })}
                         />
+                        {testResult && (
+                          <div className={`text-sm p-2 rounded ${
+                            testResult.includes('❌') 
+                              ? 'bg-red-50 text-red-700 border border-red-200' 
+                              : 'bg-green-50 text-green-700 border border-green-200'
+                          }`}>
+                            {testResult}
+                          </div>
+                        )}
                         <div className="flex gap-2">
-                          <Button onClick={handleUpdateAccount} disabled={loading} size="sm">
-                            Save
+                          <Button onClick={handleUpdateAccount} disabled={loading || testing} size="sm">
+                            {testing ? 'Testing...' : 'Test and Save'}
                           </Button>
-                          <Button onClick={cancelEdit} variant="outline" size="sm">
+                          <Button onClick={cancelEdit} variant="outline" size="sm" disabled={loading || testing}>
                             Cancel
                           </Button>
                         </div>

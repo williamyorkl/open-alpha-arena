@@ -444,3 +444,104 @@ async def get_asset_curve_by_timeframe(
     except Exception as e:
         logger.error(f"Failed to get asset curve for timeframe: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get asset curve for timeframe: {str(e)}")
+
+
+@router.post("/test-llm")
+async def test_llm_connection(payload: dict):
+    """Test LLM connection with provided credentials"""
+    try:
+        import requests
+        import json
+        
+        model = payload.get("model", "gpt-3.5-turbo")
+        base_url = payload.get("base_url", "https://api.openai.com/v1")
+        api_key = payload.get("api_key", "")
+        
+        if not api_key:
+            return {"success": False, "message": "API key is required"}
+        
+        if not base_url:
+            return {"success": False, "message": "Base URL is required"}
+        
+        # Clean up base_url - ensure it doesn't end with slash
+        if base_url.endswith('/'):
+            base_url = base_url.rstrip('/')
+        
+        # Test the connection with a simple completion request
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+            
+            # Use OpenAI-compatible chat completions format
+            payload_data = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Say 'Connection test successful' if you can read this."}
+                ],
+                "max_tokens": 50,
+                "temperature": 0
+            }
+            
+            # Construct API endpoint URL
+            api_endpoint = f"{base_url}/chat/completions"
+            
+            # Make the request
+            response = requests.post(
+                api_endpoint,
+                headers=headers,
+                json=payload_data,
+                timeout=10.0,
+                verify=False  # Disable SSL verification for custom AI endpoints
+            )
+            
+            # Check response status
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Extract text from OpenAI-compatible response format
+                if "choices" in result and len(result["choices"]) > 0:
+                    message = result["choices"][0].get("message", {})
+                    content = message.get("content", "")
+                    
+                    if content:
+                        logger.info(f"LLM test successful for model {model} at {base_url}")
+                        return {
+                            "success": True, 
+                            "message": f"Connection successful! Model {model} responded correctly.",
+                            "response": content
+                        }
+                    else:
+                        return {"success": False, "message": "LLM responded but with empty content"}
+                else:
+                    return {"success": False, "message": "Unexpected response format from LLM"}
+                    
+            elif response.status_code == 401:
+                return {"success": False, "message": "Authentication failed. Please check your API key."}
+            elif response.status_code == 403:
+                return {"success": False, "message": "Permission denied. Your API key may not have access to this model."}
+            elif response.status_code == 429:
+                return {"success": False, "message": "Rate limit exceeded. Please try again later."}
+            elif response.status_code == 404:
+                return {"success": False, "message": f"Model '{model}' not found or endpoint not available."}
+            else:
+                return {"success": False, "message": f"API returned status {response.status_code}: {response.text}"}
+                
+        except requests.ConnectionError:
+            return {"success": False, "message": f"Failed to connect to {base_url}. Please check the base URL."}
+        except requests.Timeout:
+            return {"success": False, "message": "Request timed out. The LLM service may be unavailable."}
+        except json.JSONDecodeError:
+            return {"success": False, "message": "Invalid JSON response from LLM service."}
+        except requests.RequestException as e:
+            logger.error(f"LLM test request failed: {e}", exc_info=True)
+            return {"success": False, "message": f"Connection test failed: {str(e)}"}
+        except Exception as e:
+            logger.error(f"LLM test failed: {e}", exc_info=True)
+            return {"success": False, "message": f"Connection test failed: {str(e)}"}
+            
+    except Exception as e:
+        logger.error(f"Failed to test LLM connection: {e}", exc_info=True)
+        return {"success": False, "message": f"Failed to test LLM connection: {str(e)}"}

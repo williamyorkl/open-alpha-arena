@@ -1,11 +1,18 @@
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
+import { getCryptoSymbols, getPopularCryptos } from '../../lib/api'
+
+interface CryptoInfo {
+  symbol: string
+  name: string
+  price?: number
+  market: string
+}
 
 interface OrderFormProps {
   symbol: string
-  name: string
   orderType: 'MARKET' | 'LIMIT'
   price: number
   quantity: number
@@ -20,7 +27,6 @@ interface OrderFormProps {
 
 export default function OrderForm({
   symbol,
-  name,
   orderType,
   price,
   quantity,
@@ -32,6 +38,46 @@ export default function OrderForm({
   onAdjustQuantity,
   lastPrices = {}
 }: OrderFormProps) {
+  const [allSymbols, setAllSymbols] = useState<string[]>([])
+  const [popularCryptos, setPopularCryptos] = useState<CryptoInfo[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Load crypto data on component mount
+  useEffect(() => {
+    loadCryptoData()
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const loadCryptoData = async () => {
+    try {
+      setLoading(true)
+      const [symbols, popular] = await Promise.all([
+        getCryptoSymbols(),
+        getPopularCryptos()
+      ])
+      setAllSymbols(symbols)
+      setPopularCryptos(popular)
+    } catch (error) {
+      console.error('Error loading crypto data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePriceChange = (value: string) => {
     if (orderType === 'MARKET') return // 市价单不允许手动改价
     // 只允许数字和一个小数点
@@ -41,18 +87,86 @@ export default function OrderForm({
     onPriceChange(numValue)
   }
 
+  const handleSymbolSelect = (selectedSymbol: string) => {
+    onSymbolChange(selectedSymbol)
+    setSearchTerm('')
+    setShowDropdown(false)
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value)
+    setShowDropdown(true)
+    // If user types a symbol directly, update it
+    if (value && allSymbols.includes(value.toUpperCase())) {
+      onSymbolChange(value.toUpperCase())
+    }
+  }
+
+  // Filter symbols based on search term
+  const filteredSymbols = searchTerm
+    ? allSymbols.filter(s => 
+        s.toLowerCase().includes(searchTerm.toLowerCase())
+      ).slice(0, 10) // Limit to 10 results
+    : popularCryptos.map(c => c.symbol).slice(0, 6) // Show top 6 popular when no search
+
   return (
     <div className="space-y-4">
       {/* Symbol */}
       <div className="space-y-2">
         <label className="text-xs">Code</label>
-        <div className="relative">
+        <div className="relative" ref={dropdownRef}>
           <Input 
-            value={symbol}
-            onChange={(e) => onSymbolChange(e.target.value)}
+            value={searchTerm || symbol}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onFocus={() => setShowDropdown(true)}
+            placeholder="Search crypto symbols..."
           />
+          
+          {/* Dropdown */}
+          {showDropdown && (
+            <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto mt-1">
+              {loading ? (
+                <div className="p-3 text-center text-gray-500">Loading...</div>
+              ) : filteredSymbols.length > 0 ? (
+                <>
+                  {!searchTerm && (
+                    <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-b">
+                      Popular Cryptocurrencies
+                    </div>
+                  )}
+                  {filteredSymbols.map((symbolItem) => {
+                    const crypto = popularCryptos.find(c => c.symbol === symbolItem)
+                    return (
+                      <div
+                        key={symbolItem}
+                        onClick={() => handleSymbolSelect(symbolItem)}
+                        className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="text-sm font-medium">{symbolItem}</div>
+                            {crypto && (
+                              <div className="text-xs text-gray-500">{crypto.name}</div>
+                            )}
+                          </div>
+                          {crypto?.price && (
+                            <div className="text-xs text-gray-600">
+                              ${crypto.price.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
+              ) : (
+                <div className="p-3 text-center text-gray-500">
+                  {searchTerm ? 'No symbols found' : 'No data available'}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div className="text-xs text-muted-foreground">{name}</div>
       </div>
 
       {/* 订单类型 */}

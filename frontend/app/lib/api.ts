@@ -254,6 +254,18 @@ export async function updateAccount(accountId: number, account: TradingAccountUp
   return response.json()
 }
 
+export async function testLLMConnection(testData: {
+  model?: string;
+  base_url?: string;
+  api_key?: string;
+}): Promise<{ success: boolean; message: string; response?: any }> {
+  const response = await apiRequest('/account/test-llm', {
+    method: 'POST',
+    body: JSON.stringify(testData)
+  })
+  return response.json()
+}
+
 // Legacy aliases for backward compatibility
 export type AIAccount = TradingAccount
 export type AIAccountCreate = TradingAccountCreate

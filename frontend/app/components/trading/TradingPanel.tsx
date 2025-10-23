@@ -22,7 +22,6 @@ interface TradingPanelProps {
 
 export default function TradingPanel({ onPlace, user, positions = [], lastPrices = {} }: TradingPanelProps) {
   const [symbol, setSymbol] = useState('BTC')
-  const [name] = useState('Apple Inc.')
   const [market] = useState<'US'>('US')
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('LIMIT')
   const [price, setPrice] = useState<number>(190)
@@ -196,7 +195,6 @@ export default function TradingPanel({ onPlace, user, positions = [], lastPrices
     <div className="space-y-4 w-[320px] flex-shrink-0">
       <OrderForm
         symbol={symbol}
-        name={name}
         orderType={orderType}
         price={price}
         quantity={quantity}
@@ -230,7 +228,6 @@ export default function TradingPanel({ onPlace, user, positions = [], lastPrices
         onAuthenticate={handleAuthenticate}
         orderData={{
           symbol,
-          name,
           market,
           side: pendingTrade?.side || 'BUY',
           order_type: orderType,

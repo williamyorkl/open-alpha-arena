@@ -13,12 +13,22 @@ logger = logging.getLogger(__name__)
 
 def get_last_price(symbol: str, market: str = "CRYPTO") -> float:
     key = f"{symbol}.{market}"
-    logger.info(f"Getting real-time price for {key}...")
+    
+    # Check cache first
+    from .price_cache import get_cached_price, cache_price
+    cached_price = get_cached_price(symbol, market)
+    if cached_price is not None:
+        logger.debug(f"Using cached price for {key}: {cached_price}")
+        return cached_price
+    
+    logger.info(f"Getting real-time price for {key} from API...")
 
     try:
         price = get_last_price_from_hyperliquid(symbol)
         if price and price > 0:
             logger.info(f"Got real-time price for {key} from Hyperliquid: {price}")
+            # Cache the price
+            cache_price(symbol, market, price)
             return price
         raise Exception(f"Hyperliquid returned invalid price: {price}")
     except Exception as hl_err:

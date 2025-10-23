@@ -124,7 +124,12 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Select Account" className="truncate">
             <span className="truncate block">
-              {currentAccountWithAssets ? displayName(currentAccountWithAssets) : (currentAccount?.name || currentAccount?.username || 'Select Account')}
+              {currentAccountWithAssets 
+                ? displayName(currentAccountWithAssets) 
+                : currentAccount 
+                  ? `${currentAccount.name || 'Unknown Account'} (Loading...)` 
+                  : 'Select Account'
+              }
             </span>
           </SelectValue>
         </SelectTrigger>
