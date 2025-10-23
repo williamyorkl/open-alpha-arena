@@ -71,6 +71,7 @@ function App() {
   const [aiDecisions, setAiDecisions] = useState<AIDecision[]>([])
   const [allAssetCurves, setAllAssetCurves] = useState<any[]>([])
   const [currentPage, setCurrentPage] = useState<string>('comprehensive')
+  const [accountRefreshTrigger, setAccountRefreshTrigger] = useState<number>(0)
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -186,6 +187,16 @@ function App() {
     }
   }
 
+  const handleAccountUpdated = () => {
+    // Increment refresh trigger to force AccountSelector to refresh
+    setAccountRefreshTrigger(prev => prev + 1)
+    
+    // Also refresh the current data snapshot
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'get_snapshot' }))
+    }
+  }
+
   if (!user || !account || !overview) return <div className="p-8">Connecting to trading server...</div>
 
   const renderMainContent = () => {
@@ -209,6 +220,7 @@ function App() {
               wsRef={wsRef}
               onSwitchUser={switchUser}
               onSwitchAccount={switchAccount}
+              accountRefreshTrigger={accountRefreshTrigger}
               onRefreshData={() => {
                 if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                   wsRef.current.send(JSON.stringify({ type: 'get_snapshot' }))
@@ -283,6 +295,7 @@ function App() {
       <Sidebar
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onAccountUpdated={handleAccountUpdated}
       />
       <div className="flex-1 flex flex-col">
         <Header

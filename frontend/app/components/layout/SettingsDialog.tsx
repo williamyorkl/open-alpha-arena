@@ -21,6 +21,7 @@ import {
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onAccountUpdated?: () => void  // Add callback for when account is updated
 }
 
 interface AIAccount extends TradingAccount {
@@ -35,7 +36,7 @@ interface AIAccountCreate extends TradingAccountCreate {
   api_key?: string
 }
 
-export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }: SettingsDialogProps) {
   const [accounts, setAccounts] = useState<AIAccount[]>([])
   const [loading, setLoading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -91,6 +92,9 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       setNewAccount({ name: '', model: '', base_url: '', api_key: 'default-key-please-update-in-settings' })
       setShowAddForm(false)
       await loadAccounts()
+      
+      // Notify parent component that account was created
+      onAccountUpdated?.()
     } catch (error) {
       console.error('Failed to create account:', error)
       setError(error instanceof Error ? error.message : 'Failed to create account')
@@ -116,6 +120,9 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       setEditingId(null)
       setEditAccount({ name: '', model: '', base_url: '', api_key: '' })
       await loadAccounts()
+      
+      // Notify parent component that account was updated
+      onAccountUpdated?.()
     } catch (error) {
       console.error('Failed to update account:', error)
       setError(error instanceof Error ? error.message : 'Failed to update account')

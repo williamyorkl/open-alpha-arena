@@ -1,5 +1,5 @@
 """
-账户与资产曲线 API 路由（已清理）
+Account and Asset Curve API Routes (Cleaned)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -55,6 +55,55 @@ async def list_all_accounts(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to list accounts: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list accounts: {str(e)}")
+
+
+@router.get("/{account_id}/overview")
+async def get_specific_account_overview(account_id: int, db: Session = Depends(get_db)):
+    """Get overview for a specific account"""
+    try:
+        # Get the specific account
+        account = db.query(Account).filter(
+            Account.id == account_id,
+            Account.is_active == "true"
+        ).first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Calculate positions value for this specific account
+        from services.asset_calculator import calc_positions_value
+        positions_value = float(calc_positions_value(db, account.id) or 0.0)
+        
+        # Count positions and pending orders for this account
+        positions_count = db.query(Position).filter(
+            Position.account_id == account.id,
+            Position.quantity > 0
+        ).count()
+        
+        from database.models import Order
+        pending_orders = db.query(Order).filter(
+            Order.account_id == account.id,
+            Order.status == "PENDING"
+        ).count()
+        
+        return {
+            "account": {
+                "id": account.id,
+                "name": account.name,
+                "account_type": account.account_type,
+                "current_cash": float(account.current_cash),
+                "frozen_cash": float(account.frozen_cash),
+            },
+            "total_assets": positions_value + float(account.current_cash),
+            "positions_value": positions_value,
+            "positions_count": positions_count,
+            "pending_orders": pending_orders,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get account {account_id} overview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get account overview: {str(e)}")
 
 
 @router.get("/overview")
@@ -142,6 +191,14 @@ async def create_new_account(payload: dict, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(new_account)
         
+        # Reset auto trading job after creating new account
+        try:
+            from services.scheduler import reset_auto_trading_job
+            reset_auto_trading_job()
+            logger.info("Auto trading job reset successfully after account creation")
+        except Exception as e:
+            logger.warning(f"Failed to reset auto trading job: {e}")
+        
         return {
             "id": new_account.id,
             "user_id": new_account.user_id,
@@ -201,6 +258,14 @@ async def update_account_settings(account_id: int, payload: dict, db: Session = 
         db.refresh(account)
         logger.info(f"Account {account_id} updated successfully")
         
+        # Reset auto trading job after account update
+        try:
+            from services.scheduler import reset_auto_trading_job
+            reset_auto_trading_job()
+            logger.info("Auto trading job reset successfully after account update")
+        except Exception as e:
+            logger.warning(f"Failed to reset auto trading job: {e}")
+        
         from database.models import User
         user = db.query(User).filter(User.id == account.user_id).first()
         
@@ -230,10 +295,10 @@ async def get_asset_curve_by_timeframe(
     timeframe: str = "1d",
     db: Session = Depends(get_db)
 ):
-    """获取所有账户在指定时间周期内的资产曲线数据（20个点）
+    """Get asset curve data for all accounts within a specified timeframe (20 data points)
     
     Args:
-        timeframe: 时间周期，可选值: 5m, 1h, 1d
+        timeframe: Time period, options: 5m, 1h, 1d
     """
     try:
         # Validate timeframe
@@ -377,5 +442,5 @@ async def get_asset_curve_by_timeframe(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取时间周期资产曲线失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取时间周期资产曲线失败: {str(e)}")
+        logger.error(f"Failed to get asset curve for timeframe: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get asset curve for timeframe: {str(e)}")

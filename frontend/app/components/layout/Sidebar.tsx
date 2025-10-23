@@ -5,13 +5,11 @@ import SettingsDialog from './SettingsDialog'
 interface SidebarProps {
   currentPage?: string
   onPageChange?: (page: string) => void
+  onAccountUpdated?: () => void  // Add callback to notify when accounts are updated
 }
 
-export default function Sidebar({ currentPage = 'comprehensive', onPageChange }: SidebarProps) {
+export default function Sidebar({ currentPage = 'comprehensive', onPageChange, onAccountUpdated }: SidebarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
-  useEffect(() => {
-    // 可选配置，无需强制提示
-  }, [])
 
   return (
     <>
@@ -104,6 +102,7 @@ export default function Sidebar({ currentPage = 'comprehensive', onPageChange }:
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+        onAccountUpdated={onAccountUpdated}
       />
     </>
   )

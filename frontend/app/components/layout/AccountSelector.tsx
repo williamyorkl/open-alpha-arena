@@ -24,18 +24,19 @@ interface AccountSelectorProps {
   currentAccount: Account | null
   onAccountChange: (accountId: number) => void
   username?: string
+  refreshTrigger?: number  // Add refresh trigger prop
 }
 
 // Use relative path to work with proxy
 const API_BASE = '/api'
 
-export default function AccountSelector({ currentAccount, onAccountChange, username = "default" }: AccountSelectorProps) {
+export default function AccountSelector({ currentAccount, onAccountChange, username = "default", refreshTrigger }: AccountSelectorProps) {
   const [accounts, setAccounts] = useState<AccountWithAssets[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchAccounts()
-  }, [username])
+  }, [username, refreshTrigger])  // Add refreshTrigger to dependency array
 
   const fetchAccounts = async () => {
     try {
@@ -43,15 +44,40 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
       const accountData = await getAccounts()
       console.log('Fetched accounts:', accountData)
       
-      // Fetch overview data to get total_assets
-      const overview = await getOverview()
-      
-      // Map accounts with assets info
-      const accountsWithAssets: AccountWithAssets[] = accountData.map(account => ({
-        ...account,
-        total_assets: overview.portfolio?.total_assets || account.current_cash + account.frozen_cash,
-        positions_value: overview.portfolio?.positions_value || 0
-      }))
+      // Get account-specific data for each account
+      const accountsWithAssets: AccountWithAssets[] = await Promise.all(
+        accountData.map(async (account) => {
+          try {
+            // Fetch overview data specific to this account
+            const response = await fetch(`${API_BASE}/account/${account.id}/overview`)
+            if (response.ok) {
+              const accountOverview = await response.json()
+              console.log(`Account ${account.id} overview:`, accountOverview)
+              return {
+                ...account,
+                total_assets: accountOverview.total_assets || account.current_cash + account.frozen_cash,
+                positions_value: accountOverview.positions_value || 0
+              }
+            } else {
+              console.warn(`Failed to fetch overview for account ${account.id}:`, response.status, response.statusText)
+              // Fallback to basic calculation if overview fails
+              return {
+                ...account,
+                total_assets: account.current_cash + account.frozen_cash,
+                positions_value: 0
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch overview for account ${account.id}:`, error)
+            // Fallback to basic calculation
+            return {
+              ...account,
+              total_assets: account.current_cash + account.frozen_cash,
+              positions_value: 0
+            }
+          }
+        })
+      )
       
       setAccounts(accountsWithAssets)
     } catch (error) {

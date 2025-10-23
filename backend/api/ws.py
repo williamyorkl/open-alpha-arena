@@ -15,6 +15,7 @@ from database.models import Trade, User, Account, CryptoPrice, AIDecisionLog
 from sqlalchemy import func
 from datetime import datetime, timedelta, date
 import logging
+from services.asset_curve_calculator import get_all_asset_curves_data_new
 
 
 class ConnectionManager:
@@ -82,220 +83,12 @@ async def broadcast_asset_curve_update(timeframe: str = "1h"):
 def get_all_asset_curves_data(db: Session, timeframe: str = "1h"):
     """Get timeframe-based asset curve data for all accounts - WebSocket version
     
+    Uses the new algorithm that draws curves by accounts and creates all-time lists.
+    
     Args:
         timeframe: Time period for the curve, options: "5m", "1h", "1d"
     """
-    try:
-        # Get all active accounts
-        accounts = db.query(Account).filter(Account.is_active == "true").all()
-        if not accounts:
-            return []
-        
-        # Get all unique symbols from all account positions and trades
-        symbols_query = db.query(Trade.symbol, Trade.market).distinct().all()
-        unique_symbols = set()
-        for symbol, market in symbols_query:
-            unique_symbols.add((symbol, market))
-        
-        if not unique_symbols:
-            # No trades yet, return initial capital for all accounts
-            now = datetime.now()
-            return [{
-                "timestamp": int(now.timestamp()),
-                "datetime_str": now.isoformat(),
-                "user_id": account.user_id,
-                "username": account.name,
-                "total_assets": float(account.initial_capital),
-                "cash": float(account.current_cash),
-                "positions_value": 0.0,
-            } for account in accounts]
-        
-        # Fetch kline data for all symbols (20 points)
-        from services.market_data import get_kline_data
-        
-        symbol_klines = {}
-        for symbol, market in unique_symbols:
-            try:
-                klines = get_kline_data(symbol, market, timeframe, 20)
-                if klines:
-                    symbol_klines[(symbol, market)] = klines
-                    logging.info(f"Fetched {len(klines)} klines for {symbol}.{market}")
-            except Exception as e:
-                logging.warning(f"Failed to fetch klines for {symbol}.{market}: {e}")
-        
-        if not symbol_klines:
-            # Fallback to current time if no market data available
-            now = datetime.now()
-            return [{
-                "timestamp": int(now.timestamp()),
-                "datetime_str": now.isoformat(),
-                "user_id": account.user_id,
-                "username": account.name,
-                "total_assets": float(account.initial_capital),
-                "cash": float(account.current_cash),
-                "positions_value": 0.0,
-            } for account in accounts]
-        
-        # Get timestamps from the first symbol's klines
-        first_klines = next(iter(symbol_klines.values()))
-        timestamps = [k['timestamp'] for k in first_klines]
-        
-        # Calculate asset value for each account at each timestamp
-        result = []
-        for account in accounts:
-            account_id = account.id
-            
-            # Get all trades for this account
-            trades = db.query(Trade).filter(
-                Trade.account_id == account_id
-            ).order_by(Trade.trade_time.asc()).all()
-            
-            if not trades:
-                # No trades, return initial capital at all timestamps
-                for i, ts in enumerate(timestamps):
-                    result.append({
-                        "timestamp": ts,
-                        "datetime_str": first_klines[i]['datetime_str'],
-                        "user_id": account.user_id,
-                        "username": account.name,
-                        "total_assets": float(account.initial_capital),
-                        "cash": float(account.initial_capital),
-                        "positions_value": 0.0,
-                    })
-                continue
-            
-            # Calculate holdings and cash at each timestamp
-            for i, ts in enumerate(timestamps):
-                from datetime import timezone
-                ts_datetime = datetime.fromtimestamp(ts, tz=timezone.utc)
-                
-                # Calculate cash changes up to this timestamp
-                cash_change = 0.0
-                position_quantities = {}
-                
-                for trade in trades:
-                    trade_time = trade.trade_time
-                    if not trade_time.tzinfo:
-                        trade_time = trade_time.replace(tzinfo=timezone.utc)
-                    
-                    if trade_time <= ts_datetime:
-                        # Update cash
-                        trade_amount = float(trade.price) * float(trade.quantity) + float(trade.commission)
-                        if trade.side == "BUY":
-                            cash_change -= trade_amount
-                        else:  # SELL
-                            cash_change += trade_amount
-                        
-                        # Update position
-                        key = (trade.symbol, trade.market)
-                        if key not in position_quantities:
-                            position_quantities[key] = 0.0
-                        
-                        if trade.side == "BUY":
-                            position_quantities[key] += float(trade.quantity)
-                        else:  # SELL
-                            position_quantities[key] -= float(trade.quantity)
-                
-                current_cash = float(account.initial_capital) + cash_change
-                
-                # Calculate positions value using prices at this timestamp
-                positions_value = 0.0
-                for (symbol, market), quantity in position_quantities.items():
-                    if quantity > 0 and (symbol, market) in symbol_klines:
-                        klines = symbol_klines[(symbol, market)]
-                        if i < len(klines):
-                            price = klines[i]['close']
-                            if price:
-                                positions_value += float(price) * quantity
-                
-                total_assets = current_cash + positions_value
-                
-                result.append({
-                    "timestamp": ts,
-                    "datetime_str": first_klines[i]['datetime_str'],
-                    "user_id": account.user_id,
-                    "username": account.name,
-                    "total_assets": total_assets,
-                    "cash": current_cash,
-                    "positions_value": positions_value,
-                })
-        
-        return result
-        
-    except Exception as e:
-        logging.error(f"Failed to get timeframe asset curves: {e}")
-        return []
-
-
-def _calculate_cash_changes_up_to_date(db: Session, account_id: int, target_date: date) -> float:
-    """Calculate cash changes up to the specified date"""
-    try:
-        # Calculate the impact of all trades on cash up to the target date
-        trades = db.query(Trade).filter(
-            Trade.account_id == account_id,
-            func.date(Trade.trade_time) <= target_date
-        ).all()
-
-        cash_changes = 0.0
-        for trade in trades:
-            if trade.side == 'BUY':
-                # Buy: cash decreases (price * quantity + commission)
-                cash_changes -= (float(trade.price) * float(trade.quantity) + float(trade.commission))
-            else:  # SELL
-                # Sell: cash increases (price * quantity - commission)
-                cash_changes += (float(trade.price) * float(trade.quantity) - float(trade.commission))
-
-        return cash_changes
-    except Exception as e:
-        logging.error(f"Failed to calculate cash changes: {e}")
-        return 0.0
-
-
-def _calculate_positions_value_on_date(db: Session, account_id: int, target_date: date) -> float:
-    """Calculate position value on the specified date"""
-    try:
-        # 获取到该日期为止的所有交易
-        trades = db.query(Trade).filter(
-            Trade.account_id == account_id,
-            func.date(Trade.trade_time) <= target_date
-        ).order_by(Trade.trade_time).all()
-
-        # 计算持仓
-        positions = {}
-        for trade in trades:
-            symbol_key = f"{trade.symbol}.{trade.market}"
-            if symbol_key not in positions:
-                positions[symbol_key] = 0.0
-
-            if trade.side == 'BUY':
-                positions[symbol_key] += float(trade.quantity)
-            else:  # SELL
-                positions[symbol_key] -= float(trade.quantity)
-
-        # 计算持仓价值
-        total_value = 0.0
-        for symbol_key, quantity in positions.items():
-            if quantity > 0:  # 只计算正持仓
-                symbol, market = symbol_key.split('.')
-                try:
-                    # 获取该日期的价格
-                    price_record = db.query(CryptoPrice).filter(
-                        CryptoPrice.symbol == symbol,
-                        CryptoPrice.market == market,
-                        CryptoPrice.price_date <= target_date
-                    ).order_by(CryptoPrice.price_date.desc()).first()
-
-                    if price_record:
-                        price = float(price_record.price)
-                        total_value += price * quantity
-                except Exception as e:
-                    logging.warning(f"获取 {symbol_key} 在 {target_date} 的价格失败: {e}")
-                    continue
-
-        return total_value
-    except Exception as e:
-        logging.error(f"计算持仓价值失败: {e}")
-        return 0.0
+    return get_all_asset_curves_data_new(db, timeframe)
 
 
 manager = ConnectionManager()
@@ -337,7 +130,7 @@ async def _send_snapshot(db: Session, account_id: int):
             price = get_last_price(p.symbol, p.market)
         except Exception as e:
             price = None
-            # 收集价格获取错误信息，特别是cookie相关的错误
+            # Collect price retrieval error messages, especially cookie-related errors
             error_msg = str(e)
             if "cookie" in error_msg.lower() and price_error_message is None:
                 price_error_message = error_msg
@@ -355,7 +148,7 @@ async def _send_snapshot(db: Session, account_id: int):
             "market_value": (float(price) * float(p.quantity)) if price is not None else None,
         })
 
-    # 准备响应数据
+    # Prepare response data
     response_data = {
         "type": "snapshot",
         "overview": overview,

@@ -76,6 +76,7 @@ interface ComprehensiveViewProps {
   onSwitchUser: (username: string) => void
   onSwitchAccount: (accountId: number) => void
   onRefreshData: () => void
+  accountRefreshTrigger?: number
 }
 
 export default function ComprehensiveView({
@@ -88,7 +89,8 @@ export default function ComprehensiveView({
   wsRef,
   onSwitchUser,
   onSwitchAccount,
-  onRefreshData
+  onRefreshData,
+  accountRefreshTrigger
 }: ComprehensiveViewProps) {
 
   const switchUser = (username: string) => {
@@ -142,6 +144,7 @@ export default function ComprehensiveView({
           <AccountSelector
             currentAccount={overview.account}
             onAccountChange={switchAccount}
+            refreshTrigger={accountRefreshTrigger}
           />
           </div>
           <Tabs defaultValue="ai-decisions" className="h-full flex flex-col">

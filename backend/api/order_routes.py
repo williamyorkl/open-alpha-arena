@@ -334,14 +334,14 @@ async def orders_health_check(db: Session = Depends(get_db)):
                 "filled_orders": filled_orders,
                 "cancelled_orders": cancelled_orders
             },
-            "message": "订单服务运行正常"
+            "message": "Order service is running normally"
         }
         
     except Exception as e:
-        logger.error(f"订单服务健康检查失败: {e}")
+        logger.error(f"Order service health check failed: {e}")
         return {
             "status": "unhealthy",
             "timestamp": int(time.time() * 1000),
             "error": str(e),
-            "message": "订单服务异常"
+            "message": "Order service exception"
         }

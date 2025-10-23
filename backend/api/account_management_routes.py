@@ -1,5 +1,5 @@
 """
-账户管理 API 路由 - 处理交易账户的 CRUD 操作
+Account Management API Routes - Handle CRUD operations for trading accounts
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -33,7 +33,7 @@ def get_db():
 
 
 async def get_current_user_id(session_token: str, db: Session = Depends(get_db)) -> int:
-    """从 session token 获取当前用户 ID"""
+    """Get current user ID from session token"""
     user_id = verify_auth_session(db, session_token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
@@ -42,7 +42,7 @@ async def get_current_user_id(session_token: str, db: Session = Depends(get_db))
 
 @router.get("/", response_model=List[AccountOut])
 async def list_user_accounts(session_token: str, db: Session = Depends(get_db)):
-    """获取当前用户的所有交易账户"""
+    """Get all trading accounts for the current user"""
     try:
         user_id = await get_current_user_id(session_token, db)
         accounts = get_accounts_by_user(db, user_id, active_only=True)
@@ -67,8 +67,8 @@ async def list_user_accounts(session_token: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取账户列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取账户列表失败: {str(e)}")
+        logger.error(f"Failed to get account list: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get account list: {str(e)}")
 
 
 @router.post("/", response_model=AccountOut)
@@ -77,7 +77,7 @@ async def create_trading_account(
     account_data: AccountCreate,
     db: Session = Depends(get_db)
 ):
-    """创建新的交易账户"""
+    """Create a new trading account"""
     try:
         user_id = await get_current_user_id(session_token, db)
         
@@ -115,8 +115,8 @@ async def create_trading_account(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"创建账户失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"创建账户失败: {str(e)}")
+        logger.error(f"Failed to create account: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
 
 
 @router.get("/{account_id}", response_model=AccountOut)
@@ -125,7 +125,7 @@ async def get_account_details(
     session_token: str,
     db: Session = Depends(get_db)
 ):
-    """获取账户详情"""
+    """Get account details"""
     try:
         user_id = await get_current_user_id(session_token, db)
         account = get_account(db, account_id)
@@ -153,8 +153,8 @@ async def get_account_details(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取账户详情失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取账户详情失败: {str(e)}")
+        logger.error(f"Failed to get account details: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get account details: {str(e)}")
 
 
 @router.put("/{account_id}", response_model=AccountOut)
@@ -164,7 +164,7 @@ async def update_trading_account(
     account_data: AccountUpdate,
     db: Session = Depends(get_db)
 ):
-    """更新交易账户"""
+    """Update trading account"""
     try:
         user_id = await get_current_user_id(session_token, db)
         account = get_account(db, account_id)
@@ -208,8 +208,8 @@ async def update_trading_account(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新账户失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"更新账户失败: {str(e)}")
+        logger.error(f"Failed to update account: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update account: {str(e)}")
 
 
 @router.delete("/{account_id}")
@@ -218,7 +218,7 @@ async def delete_trading_account(
     session_token: str,
     db: Session = Depends(get_db)
 ):
-    """删除交易账户 (软删除)"""
+    """Delete trading account (soft delete)"""
     try:
         user_id = await get_current_user_id(session_token, db)
         account = get_account(db, account_id)
@@ -235,8 +235,8 @@ async def delete_trading_account(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除账户失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"删除账户失败: {str(e)}")
+        logger.error(f"Failed to delete account: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")
 
 
 @router.get("/{account_id}/default")
@@ -244,7 +244,7 @@ async def get_or_create_default(
     session_token: str,
     db: Session = Depends(get_db)
 ):
-    """获取或创建默认账户 (向后兼容)"""
+    """Get or create default account (for backward compatibility)"""
     try:
         user_id = await get_current_user_id(session_token, db)
         account = get_or_create_default_account(db, user_id)
@@ -266,5 +266,5 @@ async def get_or_create_default(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取默认账户失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取默认账户失败: {str(e)}")
+        logger.error(f"Failed to get default account: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get default account: {str(e)}")

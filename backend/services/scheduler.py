@@ -5,7 +5,6 @@ Used to manage WebSocket snapshot updates and other scheduled tasks
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, Set, Callable, Optional
@@ -93,26 +92,6 @@ class TaskScheduler:
         except Exception as e:
             logger.debug(f"Failed to remove snapshot task for account {account_id}: {e}")
     
-    def add_market_hours_task(self, task_func: Callable, cron_expression: str, task_id: str):
-        """
-        Add market hours based scheduled task
-
-        Args:
-            task_func: Function to execute
-            cron_expression: Cron expression, e.g. "0 9 * * 1-5" (9 AM on weekdays)
-            task_id: Task unique identifier
-        """
-        if not self.is_running():
-            self.start()
-            
-        self.scheduler.add_job(
-            func=task_func,
-            trigger=CronTrigger.from_crontab(cron_expression),
-            id=task_id,
-            replace_existing=True
-        )
-        
-        logger.info(f"Added market time task {task_id}: {cron_expression}")
     
     def add_interval_task(self, task_func: Callable, interval_seconds: int, task_id: str, *args, **kwargs):
         """
@@ -299,34 +278,36 @@ def remove_user_snapshot_job(user_id: int):
     remove_account_snapshot_job(user_id)
 
 
-# Market hours related predefined tasks
-async def market_open_tasks():
-    """Tasks executed at market open"""
-    logger.info("Executing market open tasks")
-    # Add logic needed at market open here
-    # For example: refresh market data, check pending orders, etc.
-
-
-async def market_close_tasks():
-    """Tasks executed at market close"""
-    logger.info("Executing market close tasks")
-    # Add logic needed at market close here
-    # For example: settle daily profits, generate reports, etc.
-
-
 def setup_market_tasks():
-    """Set up market-related scheduled tasks"""
-    # US crypto market open time: 9:30 AM ET Monday-Friday (considering time zone conversion)
-    # Using UTC time, should adjust based on server time zone in actual deployment
-    task_scheduler.add_market_hours_task(
-        market_open_tasks,
-        "30 14 * * 1-5",  # UTC time, corresponds to 9:30 AM ET
-        "market_open"
-    )
+    """Set up crypto market-related scheduled tasks"""
+    # Crypto markets run 24/7, no specific market open/close times needed
+    logger.info("Crypto markets run 24/7 - no market hours tasks needed")
 
-    # US crypto market close time: 4:00 PM ET Monday-Friday
-    task_scheduler.add_market_hours_task(
-        market_close_tasks,
-        "0 21 * * 1-5",   # UTC time, corresponds to 4:00 PM ET
-        "market_close"
-    )
+
+def reset_auto_trading_job():
+    """Reset the auto trading job after account configuration changes"""
+    try:
+        # Import constants from auto_trader module
+        from services.auto_trader import AI_TRADE_JOB_ID
+        from services.trading_commands import place_ai_driven_crypto_order
+        
+        # Define interval (5 minutes)
+        AI_TRADE_INTERVAL_SECONDS = 300
+        
+        # Remove existing auto trading job if it exists
+        if task_scheduler.scheduler.get_job(AI_TRADE_JOB_ID):
+            task_scheduler.remove_task(AI_TRADE_JOB_ID)
+            logger.info(f"Removed existing auto trading job: {AI_TRADE_JOB_ID}")
+        
+        # Re-add the auto trading job with updated configuration
+        task_scheduler.add_interval_task(
+            task_func=lambda: place_ai_driven_crypto_order(max_ratio=0.2),
+            interval_seconds=AI_TRADE_INTERVAL_SECONDS,
+            task_id=AI_TRADE_JOB_ID
+        )
+        
+        logger.info(f"Auto trading job reset successfully - interval: {AI_TRADE_INTERVAL_SECONDS}s")
+        
+    except Exception as e:
+        logger.error(f"Failed to reset auto trading job: {e}")
+        raise

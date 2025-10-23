@@ -243,18 +243,18 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
                 db.add(position)
                 db.flush()
             
-            # Calculate new average cost
-            old_qty = int(position.quantity)
+            # Calculate new average cost (fix: use float quantities for crypto)
+            old_qty = float(position.quantity)  # Keep as float for crypto
             old_cost = Decimal(str(position.avg_cost))
             new_qty = old_qty + quantity
             
             if old_qty == 0:
                 new_avg_cost = execution_price
             else:
-                new_avg_cost = (old_cost * Decimal(old_qty) + notional) / Decimal(new_qty)
+                new_avg_cost = (old_cost * Decimal(str(old_qty)) + notional) / Decimal(str(new_qty))
             
-            position.quantity = new_qty
-            position.available_quantity = int(position.available_quantity) + quantity
+            position.quantity = new_qty  # Store as float
+            position.available_quantity = float(position.available_quantity) + quantity  # Keep as float
             position.avg_cost = float(new_avg_cost)
             
         else:  # SELL
@@ -265,13 +265,13 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
                 .first()
             )
 
-            if not position or int(position.available_quantity) < quantity:
+            if not position or float(position.available_quantity) < quantity:
                 logger.warning(f"Insufficient position when executing order {order.order_no}")
                 return False
 
-            # Reduce position
-            position.quantity = int(position.quantity) - quantity
-            position.available_quantity = int(position.available_quantity) - quantity
+            # Reduce position (fix: use float quantities for crypto)
+            position.quantity = float(position.quantity) - quantity
+            position.available_quantity = float(position.available_quantity) - quantity
             
             # Add cash
             cash_gain = notional - commission
