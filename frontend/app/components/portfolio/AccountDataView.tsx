@@ -212,7 +212,7 @@ export default function AccountDataView({
                     available_quantity: p.available_quantity
                   }))}
                   lastPrices={Object.fromEntries(
-                    positions.map(p => [`${p.symbol}.${p.market}`, p.last_price])
+                    positions.map(p => [`${p.symbol}.${p.market}`, p.last_price ?? null])
                   )}
                 />
               </div>
@@ -405,7 +405,6 @@ function PortfolioPieChart({ overview, positions }: { overview: Overview, positi
   // Calculate portfolio composition
   const totalValue = overview.total_assets
   const cashValue = overview.account.current_cash
-  const positionsValue = overview.positions_value
 
   // Group positions by symbol for the pie chart
   const positionData = positions.reduce((acc, position) => {

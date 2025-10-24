@@ -12,10 +12,6 @@ const resolveWsUrl = () => {
   return `${protocol}//${window.location.host}/ws`
 }
 
-const resolveApiBase = () => {
-  if (typeof window !== 'undefined') return window.location.origin
-  return import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:5611'
-}
 
 import Header from '@/components/layout/Header'
 import Sidebar from '@/components/layout/Sidebar'
