@@ -15,6 +15,10 @@ TODO:
 - LEVERAGE
 - real trading
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=etrobot/open-alpha-arena&type=date&legend=top-left)](https://www.star-history.com/#etrobot/open-alpha-arena&type=date&legend=top-left)
+
 ## Getting Started
 
 ### Prerequisites
