@@ -144,7 +144,7 @@ export default function OrderForm({
                       >
                         <div className="flex justify-between items-center">
                           <div>
-                            <div className="text-sm font-medium">{symbolItem}</div>
+                            <div className="text-xs font-medium">{symbolItem}</div>
                             {crypto && (
                               <div className="text-xs text-gray-500">{crypto.name}</div>
                             )}

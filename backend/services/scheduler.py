@@ -7,9 +7,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import Dict, Set, Callable, Optional
+from typing import Dict, Set, Callable, Optional, List
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from database.connection import SessionLocal
 from database.models import Position, CryptoPrice
@@ -291,6 +291,36 @@ def setup_market_tasks():
     logger.info("Crypto markets run 24/7 - no market hours tasks needed")
 
 
+def _ensure_market_data_ready() -> None:
+    """Prefetch required market data before enabling trading tasks"""
+    try:
+        from services.trading_commands import AI_TRADING_SYMBOLS
+        from services.market_data import get_last_price
+
+        missing_symbols: List[str] = []
+
+        for symbol in AI_TRADING_SYMBOLS:
+            try:
+                price = get_last_price(symbol, "CRYPTO")
+                if price is None or price <= 0:
+                    missing_symbols.append(symbol)
+                    logger.warning(f"Prefetch returned invalid price for {symbol}: {price}")
+                else:
+                    logger.debug(f"Prefetched market data for {symbol}: {price}")
+            except Exception as fetch_err:
+                missing_symbols.append(symbol)
+                logger.warning(f"Failed to prefetch price for {symbol}: {fetch_err}")
+
+        if missing_symbols:
+            raise RuntimeError(
+                "Market data not ready for symbols: " + ", ".join(sorted(set(missing_symbols)))
+            )
+
+    except Exception as err:
+        logger.error(f"Market data readiness check failed: {err}")
+        raise
+
+
 def reset_auto_trading_job():
     """Reset the auto trading job after account configuration changes"""
     try:
@@ -301,6 +331,9 @@ def reset_auto_trading_job():
         # Define interval (5 minutes)
         AI_TRADE_INTERVAL_SECONDS = 300
         
+        # Ensure market data is ready before scheduling trading tasks
+        _ensure_market_data_ready()
+
         # Remove existing auto trading job if it exists
         if task_scheduler.scheduler.get_job(AI_TRADE_JOB_ID):
             task_scheduler.remove_task(AI_TRADE_JOB_ID)

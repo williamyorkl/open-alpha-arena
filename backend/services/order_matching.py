@@ -90,7 +90,7 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
             .first()
         )
 
-        if not position or float(position.available_quantity) < quantity:
+        if not position or Decimal(str(position.available_quantity)) < Decimal(str(quantity)):
             available_qty = float(position.available_quantity) if position else 0
             raise ValueError(f"Insufficient positions. Need {quantity} {symbol}, available {available_qty} {symbol}")
     
@@ -208,8 +208,8 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
         Whether execution was successful
     """
     try:
-        quantity = order.quantity
-        notional = execution_price * Decimal(quantity)
+        quantity = Decimal(str(order.quantity))  # Ensure quantity is Decimal
+        notional = execution_price * quantity
         commission = _calc_commission(notional)
         
         # Re-check funds and positions (prevent concurrency issues)
@@ -243,18 +243,18 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
                 db.add(position)
                 db.flush()
             
-            # Calculate new average cost (fix: use float quantities for crypto)
-            old_qty = float(position.quantity)  # Keep as float for crypto
+            # Calculate new average cost (use Decimal for precision)
+            old_qty = Decimal(str(position.quantity))
             old_cost = Decimal(str(position.avg_cost))
             new_qty = old_qty + quantity
             
             if old_qty == 0:
                 new_avg_cost = execution_price
             else:
-                new_avg_cost = (old_cost * Decimal(str(old_qty)) + notional) / Decimal(str(new_qty))
+                new_avg_cost = (old_cost * old_qty + notional) / new_qty
             
-            position.quantity = new_qty  # Store as float
-            position.available_quantity = float(position.available_quantity) + quantity  # Keep as float
+            position.quantity = float(new_qty)  # Store as float for database
+            position.available_quantity = float(Decimal(str(position.available_quantity)) + quantity)
             position.avg_cost = float(new_avg_cost)
             
         else:  # SELL
@@ -265,13 +265,13 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
                 .first()
             )
 
-            if not position or float(position.available_quantity) < quantity:
+            if not position or Decimal(str(position.available_quantity)) < quantity:
                 logger.warning(f"Insufficient position when executing order {order.order_no}")
                 return False
 
-            # Reduce position (fix: use float quantities for crypto)
-            position.quantity = float(position.quantity) - quantity
-            position.available_quantity = float(position.available_quantity) - quantity
+            # Reduce position (use Decimal for precision)
+            position.quantity = float(Decimal(str(position.quantity)) - quantity)
+            position.available_quantity = float(Decimal(str(position.available_quantity)) - quantity)
             
             # Add cash
             cash_gain = notional - commission
@@ -286,7 +286,7 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
             market=order.market,
             side=order.side,
             price=float(execution_price),
-            quantity=quantity,
+            quantity=float(quantity),
             commission=float(commission),
         )
         db.add(trade)
@@ -295,7 +295,7 @@ def _execute_order(db: Session, order: Order, account: Account, execution_price:
         _release_frozen_on_fill(account, order, execution_price, commission)
         
         # Update order status
-        order.filled_quantity = quantity
+        order.filled_quantity = float(quantity)
         order.status = "FILLED"
         
         db.commit()

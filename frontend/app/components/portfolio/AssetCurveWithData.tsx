@@ -232,7 +232,7 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
   }
 
   return (
-    <Card className="p-6">
+    <div className="p-6">
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <Tabs value={timeframe} onValueChange={handleTimeframeChange}>
@@ -243,7 +243,7 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
             </TabsList>
           </Tabs>
         </div>
-        <div className="h-96">
+        <div className="h-[calc(80vh-10rem)]">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-muted-foreground">Loading...</div>
@@ -256,7 +256,7 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
 
       {/* Account Asset Ranking */}
       <div className="mt-6">
-        <div className="text-sm font-medium mb-3 text-secondary-foreground">Account Asset Ranking</div>
+        <div className="text-xs font-medium mb-3 text-secondary-foreground">Account Asset Ranking</div>
         <div className="flex flex-wrap gap-3">
           {users
             .map(username => {
@@ -280,7 +280,7 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
               >
                 <div className="text-lg font-bold text-primary">#{index + 1}</div>
                 <div>
-                  <div className="text-sm font-medium text-secondary-foreground">
+                  <div className="text-xs font-medium text-secondary-foreground">
                     {account.username.replace('default_', '').toUpperCase()}
                   </div>
                   <div className="text-lg font-bold text-secondary-foreground">
@@ -295,6 +295,6 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
           }
         </div>
       </div>
-    </Card>
+    </div>
   )
 }

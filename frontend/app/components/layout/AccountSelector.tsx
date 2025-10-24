@@ -98,7 +98,7 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
   if (accounts.length === 0) {
     return (
       <div className="w-64">
-        <div className="text-sm text-muted-foreground p-2 border rounded">
+        <div className="text-xs text-muted-foreground p-2 border rounded">
           No accounts found
         </div>
       </div>

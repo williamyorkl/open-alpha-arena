@@ -61,7 +61,7 @@ export default function AuthDialog({
         </h3>
         
         <div className="space-y-4">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-xs text-muted-foreground">
             <p><strong>Symbol:</strong> {orderData.symbol}</p>
             <p><strong>Type:</strong> {orderData.order_type}</p>
             <p><strong>Quantity:</strong> {orderData.quantity}</p>
@@ -69,7 +69,7 @@ export default function AuthDialog({
           </div>
 
           <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded">
-            <p className="text-sm text-blue-700 dark:text-blue-300">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
               📄 Paper Trading Mode - No real money involved
             </p>
           </div>

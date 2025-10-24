@@ -85,7 +85,7 @@ export default function CryptoSelector({ onSymbolSelect, selectedSymbol }: Crypt
         <h3 className="text-lg font-semibold">Cryptocurrencies</h3>
         <button
           onClick={() => setShowAll(!showAll)}
-          className="text-sm text-blue-600 hover:text-blue-800"
+          className="text-xs text-blue-600 hover:text-blue-800"
         >
           {showAll ? 'Show Popular' : 'Show All'}
         </button>
@@ -105,7 +105,7 @@ export default function CryptoSelector({ onSymbolSelect, selectedSymbol }: Crypt
               <div className="flex justify-between items-center">
                 <div>
                   <div className="font-medium">{symbol}</div>
-                  <div className="text-sm text-gray-500">
+                  <div className="text-xs text-gray-500">
                     {symbol.split('/')[0]} / {symbol.split('/')[1]}
                   </div>
                 </div>
@@ -125,7 +125,7 @@ export default function CryptoSelector({ onSymbolSelect, selectedSymbol }: Crypt
               <div className="flex justify-between items-center">
                 <div>
                   <div className="font-medium">{crypto.symbol}</div>
-                  <div className="text-sm text-gray-500">{crypto.name}</div>
+                  <div className="text-xs text-gray-500">{crypto.name}</div>
                 </div>
                 {crypto.price && (
                   <div className="text-right">

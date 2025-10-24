@@ -264,7 +264,7 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
                           onChange={(e) => setEditAccount({ ...editAccount, api_key: e.target.value })}
                         />
                         {testResult && (
-                          <div className={`text-sm p-2 rounded ${
+                          <div className={`text-xs p-2 rounded ${
                             testResult.includes('❌') 
                               ? 'bg-red-50 text-red-700 border border-red-200' 
                               : 'bg-green-50 text-green-700 border border-green-200'
@@ -285,20 +285,20 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
                       <div className="flex items-center justify-between">
                         <div className="space-y-1 flex-1">
                           <div className="font-medium">{account.name}</div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             {account.model ? `Model: ${account.model}` : 'No model configured'}
                           </div>
                           {account.base_url && (
-                            <div className="text-sm text-muted-foreground truncate">
+                            <div className="text-xs text-muted-foreground truncate">
                               Base URL: {account.base_url}
                             </div>
                           )}
                           {account.api_key && (
-                            <div className="text-sm text-muted-foreground">
+                            <div className="text-xs text-muted-foreground">
                               API Key: {'*'.repeat(Math.max(0, (account.api_key?.length || 0) - 4))}{account.api_key?.slice(-4) || '****'}
                             </div>
                           )}
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             Cash: ${account.current_cash?.toLocaleString() || '0'}
                           </div>
                         </div>

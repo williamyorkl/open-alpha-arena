@@ -68,7 +68,7 @@ export default function cryptoViewerDrawer({
             <DrawerTitle className="text-base">
               {title || (symbol ? `${symbol}` : 'crypto Viewer')}
               {cryptoList.length > 0 && currentIndex >= 0 && (
-                <span className="text-sm text-muted-foreground ml-2">
+                <span className="text-xs text-muted-foreground ml-2">
                   ({currentIndex + 1}/{cryptoList.length})
                 </span>
               )}

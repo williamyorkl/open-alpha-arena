@@ -74,7 +74,7 @@ export default function cryptoViewer({ symbol, title, subtitle, className = "" }
         <h2 className="text-lg font-medium">
           {title || (symbol ? `${symbol} - crypto Chart` : 'Select a crypto')}
         </h2>
-        {subtitle && <div className="text-sm text-muted-foreground">{subtitle}</div>}
+        {subtitle && <div className="text-xs text-muted-foreground">{subtitle}</div>}
       </div>
       
       <div className="relative w-full h-[50vh] mb-4">
@@ -90,19 +90,19 @@ export default function cryptoViewer({ symbol, title, subtitle, className = "" }
         {cryptoInfoLoading && (
           <div className="flex items-center justify-center py-4">
             <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-            <span className="text-sm">Loading crypto info...</span>
+            <span className="text-xs">Loading crypto info...</span>
           </div>
         )}
 
         {cryptoInfoError && (
-          <div className="text-red-700 text-sm">
+          <div className="text-red-700 text-xs">
             {cryptoInfoError}
           </div>
         )}
 
         {!cryptoInfoLoading && !cryptoInfoError && cryptoInfo.length > 0 && (
           <div className="max-h-[28vh] overflow-y-auto">
-            <div className="grid grid-cols-1 gap-1 text-sm">
+            <div className="grid grid-cols-1 gap-1 text-xs">
               {cryptoInfo.map((info, index) => (
                 <div key={index} className="flex justify-between py-1 border-b border-gray-500 last:border-b-0">
                   <span className="font-medium text-gray-600 truncate mr-2">{info.item}:</span>
@@ -114,13 +114,13 @@ export default function cryptoViewer({ symbol, title, subtitle, className = "" }
         )}
 
         {!cryptoInfoLoading && !cryptoInfoError && cryptoInfo.length === 0 && symbol && symbol !== 'IXIC' && (
-          <div className="text-center py-4 text-gray-500 text-sm">
+          <div className="text-center py-4 text-gray-500 text-xs">
             No information available for {symbol}
           </div>
         )}
 
         {(!symbol || symbol === 'IXIC') && (
-          <div className="text-center py-4 text-gray-500 text-sm">
+          <div className="text-center py-4 text-gray-500 text-xs">
             Select a crypto to view information
           </div>
         )}

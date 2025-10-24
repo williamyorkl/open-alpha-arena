@@ -8,7 +8,7 @@ import os
 from database.connection import engine, Base, SessionLocal
 from database.models import TradingConfig, User, Account, SystemConfig
 from config.settings import DEFAULT_TRADING_CONFIGS
-app = FastAPI(title="Simulated Crypto Trading API")
+app = FastAPI(title="Crypto Paper Trading API")
 
 # Health check endpoint
 @app.get("/api/health")
