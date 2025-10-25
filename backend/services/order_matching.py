@@ -22,7 +22,7 @@ def _calc_commission(notional: Decimal) -> Decimal:
     return max(pct_fee, min_fee)
 
 
-def create_order(db: Session, account: Account, symbol: str, name: str, market: str, 
+def create_order(db: Session, account: Account, symbol: str, name: str,
                 side: str, order_type: str, price: Optional[float], quantity: float) -> Order:
     """
     Create limit order
@@ -32,7 +32,6 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
         account: Account object
         symbol: crypto Symbol
         name: crypto name
-        market: Market Symbol
         side: Buy/side direction (BUY/SELL)
         order_type: Order type (MARKET/LIMIT)
         price: Order price (required for limit orders)
@@ -44,9 +43,7 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
     Raises:
         ValueError: Parameter validation failed or insufficient funds/positions
     """
-    # Basic parameter validation
-    if market not in ["CRYPTO"]:
-        raise ValueError("Only cryptocurrency market supported")
+    # Basic parameter validation (crypto-only)
     
     # For crypto, we support fractional quantities, so no lot size validation needed
     # if quantity % CRYPTO_LOT_SIZE != 0:
@@ -64,7 +61,7 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
     if order_type == "MARKET":
         # Market order: get current price for fund validation
         try:
-            current_market_price = get_last_price(symbol, market)
+            current_market_price = get_last_price(symbol)
         except Exception as err:
             raise ValueError(f"Unable to get market price for market order: {err}")
         check_price = Decimal(str(current_market_price))
@@ -86,7 +83,7 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
         # Sell: check if sufficient positions available
         position = (
             db.query(Position)
-            .filter(Position.account_id == account.id, Position.symbol == symbol, Position.market == market)
+            .filter(Position.account_id == account.id, Position.symbol == symbol, Position.market == "CRYPTO")
             .first()
         )
 
@@ -101,7 +98,7 @@ def create_order(db: Session, account: Account, symbol: str, name: str, market: 
         order_no=uuid.uuid4().hex[:16],
         symbol=symbol,
         name=name,
-        market=market,
+        market="CRYPTO",
         side=side,
         order_type=order_type,
         price=price,

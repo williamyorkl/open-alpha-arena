@@ -72,6 +72,8 @@ interface ComprehensiveViewProps {
   onSwitchAccount: (accountId: number) => void
   onRefreshData: () => void
   accountRefreshTrigger?: number
+  accounts?: any[]
+  loadingAccounts?: boolean
 }
 
 export default function ComprehensiveView({
@@ -85,7 +87,9 @@ export default function ComprehensiveView({
   onSwitchUser,
   onSwitchAccount,
   onRefreshData,
-  accountRefreshTrigger
+  accountRefreshTrigger,
+  accounts,
+  loadingAccounts
 }: ComprehensiveViewProps) {
 
   return (
@@ -100,6 +104,8 @@ export default function ComprehensiveView({
       onSwitchAccount={onSwitchAccount}
       onRefreshData={onRefreshData}
       accountRefreshTrigger={accountRefreshTrigger}
+      accounts={accounts}
+      loadingAccounts={loadingAccounts}
       showAssetCurves={true}
       showTradingPanel={false}
     />

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 import logging
 
 from database.connection import SessionLocal
-from database.models import User, Order
+from database.models import User, Order, Account
 from schemas.order import OrderCreate, OrderOut
 from services.order_matching import create_order, check_and_execute_order, get_pending_orders, cancel_order, process_all_pending_orders
 from repositories.user_repo import verify_user_password, user_has_password, set_user_password, verify_auth_session
@@ -34,11 +34,10 @@ class OrderCreateRequest(BaseModel):
     user_id: int
     symbol: str
     name: str
-    market: str = "US"
     side: str  # BUY/SELL
     order_type: str  # MARKET/LIMIT
     price: Optional[float] = None
-    quantity: int
+    quantity: float
     username: Optional[str] = None  # Username for verification (required if no session_token)
     password: Optional[str] = None  # Trading password (required if no session_token)
     session_token: Optional[str] = None  # Auth session token (alternative to username+password)
@@ -104,13 +103,21 @@ async def create_new_order(request: OrderCreateRequest, db: Session = Depends(ge
         else:
             raise HTTPException(status_code=400, detail="Please provide either session token or username+password")
         
-        # Create order
+        # Resolve trading account for the user (default user initialized in backend/main.py has at least one account)
+        account = (
+            db.query(Account)
+            .filter(Account.user_id == user.id, Account.is_active == "true")
+            .first()
+        )
+        if not account:
+            raise HTTPException(status_code=404, detail="Active trading account not found for user")
+
+        # Create order (crypto-only)
         order = create_order(
             db=db,
-            user=user,
+            account=account,
             symbol=request.symbol,
             name=request.name,
-            market=request.market,
             side=request.side,
             order_type=request.order_type,
             price=request.price,

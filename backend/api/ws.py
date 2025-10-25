@@ -538,7 +538,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Extract order parameters
                         symbol = msg.get("symbol")
                         name = msg.get("name", symbol)  # Use symbol as name if not provided
-                        market = msg.get("market", "US")
+                        market = msg.get("market", "CRYPTO")
                         side = msg.get("side")
                         order_type = msg.get("order_type")
                         price = msg.get("price")
@@ -549,9 +549,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_text(json.dumps({"type": "error", "message": "missing required parameters"}))
                             continue
 
-                        # Convert quantity to int
+                        # Convert quantity to float (crypto supports fractional quantities)
                         try:
-                            quantity = int(quantity)
+                            quantity = float(quantity)
                         except (ValueError, TypeError):
                             await websocket.send_text(json.dumps({"type": "error", "message": "invalid quantity"}))
                             continue
@@ -559,10 +559,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Create the order
                         order = create_order(
                             db=db,
-                            user=user,
+                            account=account,
                             symbol=symbol,
                             name=name,
-                            market=market,
                             side=side,
                             order_type=order_type,
                             price=price,

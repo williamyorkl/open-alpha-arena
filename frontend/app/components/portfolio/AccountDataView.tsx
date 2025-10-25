@@ -85,6 +85,8 @@ interface AccountDataViewProps {
   accountRefreshTrigger?: number
   showAssetCurves?: boolean
   showTradingPanel?: boolean
+  accounts?: any[]
+  loadingAccounts?: boolean
 }
 
 const API_BASE = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:5611'
@@ -101,7 +103,9 @@ export default function AccountDataView({
   onRefreshData,
   accountRefreshTrigger,
   showAssetCurves = true,
-  showTradingPanel = false
+  showTradingPanel = false,
+  accounts,
+  loadingAccounts
 }: AccountDataViewProps) {
 
   const cancelOrder = async (orderId: number) => {
@@ -149,6 +153,8 @@ export default function AccountDataView({
               currentAccount={overview.account}
               onAccountChange={onSwitchAccount}
               refreshTrigger={accountRefreshTrigger}
+              accounts={accounts}
+              loadingExternal={loadingAccounts}
             />
           </div>
 

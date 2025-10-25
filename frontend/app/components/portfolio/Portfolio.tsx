@@ -71,6 +71,8 @@ interface PortfolioProps {
   onSwitchAccount: (accountId: number) => void
   onRefreshData: () => void
   accountRefreshTrigger?: number
+  accounts?: any[]
+  loadingAccounts?: boolean
 }
 
 export default function Portfolio({
@@ -83,7 +85,9 @@ export default function Portfolio({
   wsRef,
   onSwitchAccount,
   onRefreshData,
-  accountRefreshTrigger
+  accountRefreshTrigger,
+  accounts,
+  loadingAccounts
 }: PortfolioProps) {
   return (
     <AccountDataView
@@ -97,6 +101,8 @@ export default function Portfolio({
       onSwitchAccount={onSwitchAccount}
       onRefreshData={onRefreshData}
       accountRefreshTrigger={accountRefreshTrigger}
+      accounts={accounts}
+      loadingAccounts={loadingAccounts}
       showAssetCurves={false}
       showTradingPanel={true}
     />

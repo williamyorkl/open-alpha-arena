@@ -17,7 +17,7 @@ import Header from '@/components/layout/Header'
 import Sidebar from '@/components/layout/Sidebar'
 import Portfolio from '@/components/portfolio/Portfolio'
 import ComprehensiveView from '@/components/portfolio/ComprehensiveView'
-import { AIDecision } from '@/lib/api'
+import { AIDecision, getAccounts } from '@/lib/api'
 
 interface User {
   id: number
@@ -64,6 +64,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState<string>('comprehensive')
   const [accountRefreshTrigger, setAccountRefreshTrigger] = useState<number>(0)
   const wsRef = useRef<WebSocket | null>(null)
+  const [accounts, setAccounts] = useState<any[]>([])
+  const [accountsLoading, setAccountsLoading] = useState<boolean>(true)
 
   useEffect(() => {
     let reconnectTimer: NodeJS.Timeout | null = null
@@ -92,6 +94,8 @@ function App() {
               if (msg.account) {
                 setAccount(msg.account)
               }
+              // refresh accounts list once bootstrapped
+              refreshAccounts()
               // request initial snapshot
               ws!.send(JSON.stringify({ type: 'get_snapshot' }))
             } else if (msg.type === 'snapshot') {
@@ -115,6 +119,7 @@ function App() {
             } else if (msg.type === 'account_switched') {
               toast.success(`Switched to ${msg.account.name}`)
               setAccount(msg.account)
+              refreshAccounts()
             } else if (msg.type === 'error') {
               console.error(msg.message)
               toast.error(msg.message || 'Order error')
@@ -175,6 +180,25 @@ function App() {
       // Don't close the socket in cleanup to avoid issues with React StrictMode
     }
   }, [])
+
+  // Centralized accounts fetcher
+  const refreshAccounts = async () => {
+    try {
+      setAccountsLoading(true)
+      const list = await getAccounts()
+      setAccounts(list)
+    } catch (e) {
+      console.error('Failed to fetch accounts', e)
+    } finally {
+      setAccountsLoading(false)
+    }
+  }
+
+  // Fetch accounts on mount and when settings updated
+  useEffect(() => {
+    refreshAccounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountRefreshTrigger])
 
   const placeOrder = (payload: any) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -254,6 +278,8 @@ function App() {
             onSwitchAccount={switchAccount}
             onRefreshData={refreshData}
             accountRefreshTrigger={accountRefreshTrigger}
+            accounts={accounts}
+            loadingAccounts={accountsLoading}
           />
         )}
         
@@ -270,6 +296,8 @@ function App() {
             onSwitchAccount={switchAccount}
             onRefreshData={refreshData}
             accountRefreshTrigger={accountRefreshTrigger}
+            accounts={accounts}
+            loadingAccounts={accountsLoading}
           />
         )}
       </main>
