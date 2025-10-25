@@ -85,22 +85,53 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
   const handleCreateAccount = async () => {
     try {
       setLoading(true)
+      setTesting(true)
       setError(null)
-      
+      setTestResult(null)
+
       if (!newAccount.name || !newAccount.name.trim()) {
         setError('Account name is required')
         setLoading(false)
+        setTesting(false)
         return
       }
-      
+
+      // If AI fields are provided, test LLM connection first
+      if (newAccount.model || newAccount.base_url || newAccount.api_key) {
+        setTestResult('Testing LLM connection...')
+        try {
+          const testResponse = await testLLMConnection({
+            model: newAccount.model,
+            base_url: newAccount.base_url,
+            api_key: newAccount.api_key,
+          })
+          if (!testResponse.success) {
+            const message = testResponse.message || 'LLM connection test failed'
+            setError(`LLM Test Failed: ${message}`)
+            setTestResult(`❌ Test failed: ${message}`)
+            setLoading(false)
+            setTesting(false)
+            return
+          }
+          setTestResult('✅ LLM connection test passed! Creating account...')
+        } catch (testError) {
+          const message = testError instanceof Error ? testError.message : 'LLM connection test failed'
+          setError(`LLM Test Failed: ${message}`)
+          setTestResult(`❌ Test failed: ${message}`)
+          setLoading(false)
+          setTesting(false)
+          return
+        }
+      }
+
       console.log('Creating account with data:', newAccount)
       await createAccount(newAccount)
       setNewAccount({ name: '', model: '', base_url: '', api_key: 'default-key-please-update-in-settings' })
       setShowAddForm(false)
       await loadAccounts()
-      
+
       toast.success('Account created successfully!')
-      
+
       // Notify parent component that account was created
       onAccountUpdated?.()
     } catch (error) {
@@ -110,6 +141,8 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
       toast.error(`Failed to create account: ${errorMessage}`)
     } finally {
       setLoading(false)
+      setTesting(false)
+      setTestResult(null)
     }
   }
 
@@ -349,7 +382,7 @@ export default function SettingsDialog({ open, onOpenChange, onAccountUpdated }:
                 />
                 <div className="flex gap-2">
                   <Button onClick={handleCreateAccount} disabled={loading}>
-                    Create Account
+                    Test and Create
                   </Button>
                   <Button 
                     onClick={() => setShowAddForm(false)} 

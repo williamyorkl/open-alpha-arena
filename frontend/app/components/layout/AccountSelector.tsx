@@ -93,8 +93,7 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
 
   const displayName = (account: AccountWithAssets) => {
     const accountName = account.name || account.username || `${account.account_type} Account`
-    const total = (account.total_assets ?? (account.current_cash + account.frozen_cash))
-    return `${accountName} ($${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+    return accountName
   }
 
   // Find the current account in our loaded accounts list (which has total_assets)
@@ -114,7 +113,7 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
               {currentAccountWithAssets 
                 ? displayName(currentAccountWithAssets) 
                 : currentAccount 
-                  ? `${currentAccount.name || 'Unknown Account'} (Loading...)` 
+                  ? `${currentAccount.name || 'Unknown Account'}` 
                   : 'Select Account'
               }
             </span>
@@ -123,14 +122,7 @@ export default function AccountSelector({ currentAccount, onAccountChange, usern
         <SelectContent>
           {accounts.map((account) => (
             <SelectItem key={account.id} value={account.id.toString()}>
-              <div className="flex flex-col">
-                <span className="font-medium">{displayName(account)}</span>
-                <span className="text-xs text-muted-foreground">
-                  Cash: ${account.current_cash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | 
-                  Positions: ${account.positions_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  {account.model && ` | ${account.model}`}
-                </span>
-              </div>
+              {displayName(account)}
             </SelectItem>
           ))}
         </SelectContent>

@@ -49,6 +49,7 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
   const [data, setData] = useState<AssetCurveData[]>(initialData || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   // Listen for WebSocket asset curve updates
   useEffect(() => {
@@ -61,9 +62,11 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
           setData(msg.data || [])
           setLoading(false)
           setError(null)
+          setIsInitialized(true)
         } else if (msg.type === 'asset_curve_update' && msg.timeframe === timeframe) {
           // Real-time update for current timeframe
           setData(msg.data || [])
+          setIsInitialized(true)
         }
       } catch (err) {
         console.error('Failed to parse WebSocket message:', err)
@@ -86,11 +89,20 @@ export default function AssetCurve({ data: initialData, wsRef }: AssetCurveProps
         type: 'get_asset_curve',
         timeframe: timeframe
       }))
-    } else if (initialData && timeframe === '1h') {
-      // Fallback to initial data for 1h timeframe (default in snapshots)
+    } else if (initialData && timeframe === '1h' && !isInitialized) {
+      // Only use initial data on first mount, not on subsequent prop changes
       setData(initialData)
+      setIsInitialized(true)
     }
-  }, [timeframe, wsRef, initialData])
+  }, [timeframe, wsRef])
+
+  // Initialize with initial data only once on first mount
+  useEffect(() => {
+    if (initialData && !isInitialized && timeframe === '1h') {
+      setData(initialData)
+      setIsInitialized(true)
+    }
+  }, []) // Empty dependency array - only run on mount
 
   const handleTimeframeChange = (value: string) => {
     setTimeframe(value as Timeframe)
